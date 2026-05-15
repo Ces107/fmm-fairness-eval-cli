@@ -1,0 +1,363 @@
+{
+  "generated_at_utc": "2026-05-14T16:44:59Z",
+  "inter_site": {
+    "attribute": "site",
+    "excluded_groups": [],
+    "gap": 0.0010515528262870818,
+    "gap_ci_high": null,
+    "gap_ci_low": null,
+    "metric": "inter_site_auc_variance",
+    "per_group": [
+      {
+        "ci_high": null,
+        "ci_low": null,
+        "group": "hospital_A",
+        "n": 300,
+        "value": 0.9998220957125067
+      },
+      {
+        "ci_high": null,
+        "ci_low": null,
+        "group": "hospital_B",
+        "n": 300,
+        "value": 0.9937288738658602
+      },
+      {
+        "ci_high": null,
+        "ci_low": null,
+        "group": "hospital_C",
+        "n": 300,
+        "value": 0.9281887353113322
+      }
+    ]
+  },
+  "manifest_mode": "ai-act",
+  "n_samples": 900,
+  "per_attribute_metrics": {
+    "age_bucket": {
+      "calibration_gap": {
+        "attribute": "age_bucket",
+        "excluded_groups": [],
+        "gap": 0.030514910130718942,
+        "gap_ci_high": 0.0645160226715686,
+        "gap_ci_low": 0.008524894589552287,
+        "metric": "calibration_gap",
+        "per_group": [
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "0-39",
+            "n": 272,
+            "value": 0.15025036764705882
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "40-64",
+            "n": 360,
+            "value": 0.18076527777777776
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "65+",
+            "n": 268,
+            "value": 0.1665850746268657
+          }
+        ]
+      },
+      "demographic_parity_gap": {
+        "attribute": "age_bucket",
+        "excluded_groups": [],
+        "gap": 0.028204565408252835,
+        "gap_ci_high": 0.11557095039508336,
+        "gap_ci_low": 0.009469259096673462,
+        "metric": "demographic_parity_gap",
+        "per_group": [
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "0-39",
+            "n": 272,
+            "value": 0.3897058823529412
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "40-64",
+            "n": 360,
+            "value": 0.40555555555555556
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "65+",
+            "n": 268,
+            "value": 0.417910447761194
+          }
+        ]
+      },
+      "equal_opportunity_gap": {
+        "attribute": "age_bucket",
+        "excluded_groups": [],
+        "gap": 0.007325352867607604,
+        "gap_ci_high": 0.12590443697394252,
+        "gap_ci_low": 0.012422325021699696,
+        "metric": "equal_opportunity_gap",
+        "per_group": [
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "0-39",
+            "n": 272,
+            "value": 0.7518248175182481
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "40-64",
+            "n": 360,
+            "value": 0.7512953367875648
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "65+",
+            "n": 268,
+            "value": 0.7586206896551724
+          }
+        ]
+      }
+    },
+    "sex": {
+      "calibration_gap": {
+        "attribute": "sex",
+        "excluded_groups": [],
+        "gap": 0.022055149501661098,
+        "gap_ci_high": 0.04776885229810218,
+        "gap_ci_low": 0.0007559319654801534,
+        "metric": "calibration_gap",
+        "per_group": [
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "F",
+            "n": 427,
+            "value": 0.15422857142857144
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "M",
+            "n": 473,
+            "value": 0.17628372093023253
+          }
+        ]
+      },
+      "demographic_parity_gap": {
+        "attribute": "sex",
+        "excluded_groups": [],
+        "gap": 0.016477613122676038,
+        "gap_ci_high": 0.08120881215620064,
+        "gap_ci_low": 0.001183338202019102,
+        "metric": "demographic_parity_gap",
+        "per_group": [
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "F",
+            "n": 427,
+            "value": 0.3957845433255269
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "M",
+            "n": 473,
+            "value": 0.41226215644820297
+          }
+        ]
+      },
+      "equal_opportunity_gap": {
+        "attribute": "sex",
+        "excluded_groups": [],
+        "gap": 0.0016042780748662944,
+        "gap_ci_high": 0.08948650421260303,
+        "gap_ci_low": 0.0015110937452428475,
+        "metric": "equal_opportunity_gap",
+        "per_group": [
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "F",
+            "n": 427,
+            "value": 0.7545454545454545
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "M",
+            "n": 473,
+            "value": 0.7529411764705882
+          }
+        ]
+      }
+    },
+    "site": {
+      "calibration_gap": {
+        "attribute": "site",
+        "excluded_groups": [],
+        "gap": 0.08745166666666662,
+        "gap_ci_high": 0.12818404166666655,
+        "gap_ci_low": 0.05037930833333339,
+        "metric": "calibration_gap",
+        "per_group": [
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "hospital_A",
+            "n": 300,
+            "value": 0.1603156666666667
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "hospital_B",
+            "n": 300,
+            "value": 0.2069123333333333
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "hospital_C",
+            "n": 300,
+            "value": 0.2477673333333333
+          }
+        ]
+      },
+      "demographic_parity_gap": {
+        "attribute": "site",
+        "excluded_groups": [],
+        "gap": 0.29666666666666675,
+        "gap_ci_high": 0.3700833333333333,
+        "gap_ci_low": 0.23,
+        "metric": "demographic_parity_gap",
+        "per_group": [
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "hospital_A",
+            "n": 300,
+            "value": 0.5166666666666667
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "hospital_B",
+            "n": 300,
+            "value": 0.4766666666666667
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "hospital_C",
+            "n": 300,
+            "value": 0.22
+          }
+        ]
+      },
+      "equal_opportunity_gap": {
+        "attribute": "site",
+        "excluded_groups": [],
+        "gap": 0.604284936620266,
+        "gap_ci_high": 0.6802401474494497,
+        "gap_ci_low": 0.5304098345401934,
+        "metric": "equal_opportunity_gap",
+        "per_group": [
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "hospital_A",
+            "n": 300,
+            "value": 0.9935064935064936
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "hospital_B",
+            "n": 300,
+            "value": 0.9090909090909091
+          },
+          {
+            "ci_high": null,
+            "ci_low": null,
+            "group": "hospital_C",
+            "n": 300,
+            "value": 0.38922155688622756
+          }
+        ]
+      }
+    }
+  },
+  "predictions_file": "examples/predictions.csv",
+  "protected_attributes_declared": [
+    "site",
+    "sex",
+    "age_bucket"
+  ],
+  "regulatory_mapping": {
+    "articles": [
+      {
+        "article": "Art. 9",
+        "mapped_metrics": [
+          "samd_fairness_score",
+          "inter_site_auc_variance"
+        ],
+        "note": "Inter-site performance variance is a residual risk requiring documented mitigation.",
+        "title": "Risk management system"
+      },
+      {
+        "article": "Art. 10",
+        "mapped_metrics": [
+          "equal_opportunity_gap",
+          "demographic_parity_gap",
+          "calibration_gap"
+        ],
+        "note": "Per-attribute breakdown evidences Art. 10(2)(f-g) examination of biases and shortcomings.",
+        "title": "Data and data governance"
+      },
+      {
+        "article": "Art. 15",
+        "mapped_metrics": [
+          "inter_site_auc_variance"
+        ],
+        "note": "Site-level AUC variance evidences performance generalization claims.",
+        "title": "Accuracy, robustness, cybersecurity"
+      }
+    ],
+    "framework": "EU AI Act (Regulation 2024/1689)"
+  },
+  "samd_fairness_score": {
+    "components": {
+      "cal_mean": 0.02628502981619002,
+      "dp_mean": 0.022341089265464437,
+      "eo_mean": 0.004464815471236949,
+      "site_term": 0.06485531053929453
+    },
+    "demographic_attributes": [
+      "sex",
+      "age_bucket"
+    ],
+    "samd_fairness_score": 0.9654245132806629,
+    "site_attribute": "site",
+    "weights": {
+      "cal": 0.15,
+      "dp": 0.15,
+      "eo": 0.3,
+      "site": 0.4
+    }
+  },
+  "site_attribute": "site",
+  "tool": "fmm-fairness-eval",
+  "tool_version": "0.1.0"
+}
