@@ -31,7 +31,7 @@ def make_predictions(n_per_site: int = 300, seed: int = RNG_SEED) -> pd.DataFram
         y_pred = (y_score >= 0.5).astype(int)
         sex = rng.choice(sex_levels, size=n)
         age = rng.choice(age_buckets, size=n, p=[0.3, 0.4, 0.3])
-        for yt, ys, yp, sx, ag in zip(y_true, y_score, y_pred, sex, age):
+        for yt, ys, yp, sx, ag in zip(y_true, y_score, y_pred, sex, age, strict=False):
             rows.append({
                 "y_true": int(yt),
                 "y_pred": int(yp),

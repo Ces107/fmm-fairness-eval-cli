@@ -44,6 +44,12 @@ dev = [
     "mypy>=1.8",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Ces107/fmm-fairness-eval-cli"
+Repository = "https://github.com/Ces107/fmm-fairness-eval-cli"
+Issues = "https://github.com/Ces107/fmm-fairness-eval-cli/issues"
+Changelog = "https://github.com/Ces107/fmm-fairness-eval-cli/blob/main/CHANGELOG.md"
+
 [project.scripts]
 fmm-fairness = "fmm_fairness.cli:main"
 
