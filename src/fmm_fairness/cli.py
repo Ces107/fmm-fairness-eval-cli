@@ -1,12 +1,19 @@
-"""CLI entrypoint: ``fmm-fairness evaluate ...``."""
+"""CLI entrypoint: ``fmm-fairness evaluate ...`` and ``fmm-fairness compare ...``."""
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import sys
+from pathlib import Path
 
 import pandas as pd
 
 from fmm_fairness import __version__
+from fmm_fairness.comparison import (
+    compare_models,
+    render_comparison_markdown,
+)
 from fmm_fairness.evidence import EvaluationConfig, write_evidence_pack
 from fmm_fairness.metrics import (
     SCORE_COL_BINARY,
@@ -18,14 +25,7 @@ from fmm_fairness.metrics import (
 LABEL_COLUMNS = ["y_true", "y_pred"]
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        prog="fmm-fairness",
-        description="SaMD-specific fairness evaluation CLI for foundation-model medical AI.",
-    )
-    p.add_argument("--version", action="version", version=f"fmm-fairness-eval {__version__}")
-    sub = p.add_subparsers(dest="command", required=True)
-
+def _add_evaluate(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     ev = sub.add_parser(
         "evaluate",
         help="Evaluate a predictions CSV and emit a fairness evidence pack.",
@@ -62,19 +62,14 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Comma-separated names of clinician-rater columns to use for inter-rater "
-            "agreement (e.g. 'doc1,doc2,doc3,...,doc10'). When provided, the evidence "
-            "pack gains an inter_rater_agreement block (Cohen kappa matrix, Fleiss kappa, "
-            "Krippendorff alpha, AI-vs-pooled-raters kappa with bootstrap CI)."
+            "agreement (e.g. 'doc1,doc2,doc3,...,doc10')."
         ),
     )
     ev.add_argument(
         "--rater-missing-value",
         type=int,
         default=-1,
-        help=(
-            "Sentinel value used in rater columns for an unrated cell (default: -1, "
-            "matches the underlying TFG convention)."
-        ),
+        help=("Sentinel value used in rater columns for an unrated cell (default: -1)."),
     )
     ev.add_argument(
         "--output",
@@ -87,6 +82,74 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Emit an additional regulatory mapping block. Currently supported: ai-act.",
     )
+
+
+def _add_compare(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    cmp_ = sub.add_parser(
+        "compare",
+        help=(
+            "Compare 2+ foundation-model candidates on a joint accuracy + fairness "
+            "Pareto frontier and recommend one."
+        ),
+    )
+    cmp_.add_argument(
+        "predictions",
+        nargs="+",
+        help=(
+            "Path to a predictions CSV per candidate. Same shape as `evaluate` "
+            "(y_true, y_pred, y_score* columns, plus protected-attribute columns)."
+        ),
+    )
+    cmp_.add_argument(
+        "--labels",
+        required=True,
+        help=(
+            "Comma-separated candidate labels, in the same order as the predictions "
+            "paths (e.g. 'uni,conch,plip,transpath,gigapath,titan')."
+        ),
+    )
+    cmp_.add_argument(
+        "--protected-attrs",
+        required=True,
+        help="Comma-separated protected attribute column names (e.g. 'site,sex').",
+    )
+    cmp_.add_argument(
+        "--site-attribute",
+        default="site",
+        help="Column name to treat as the site identifier (default: site).",
+    )
+    cmp_.add_argument(
+        "--num-classes",
+        type=int,
+        default=None,
+        help="Number of classes K (>= 2). Auto-detected when omitted.",
+    )
+    cmp_.add_argument(
+        "--fairness-floor",
+        type=float,
+        default=0.10,
+        help=(
+            "Maximum acceptable inter-site weighted-F1 gap for the Art. 9 "
+            "recommendation (default: 0.10). Frontier candidates above this floor "
+            "are flagged in the rationale."
+        ),
+    )
+    cmp_.add_argument(
+        "--output",
+        default="comparison-report",
+        help="Output directory for the comparison evidence pack.",
+    )
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="fmm-fairness",
+        description="SaMD-specific fairness evaluation CLI for foundation-model medical AI.",
+    )
+    p.add_argument("--version", action="version", version=f"fmm-fairness-eval {__version__}")
+    sub = p.add_subparsers(dest="command", required=True)
+    _add_evaluate(sub)
+    _add_compare(sub)
     return p
 
 
@@ -160,10 +223,7 @@ def _validate_dataframe(
     return errors, K
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
-    if args.command != "evaluate":
-        return 2
+def _run_evaluate(args: argparse.Namespace) -> int:
     try:
         df = pd.read_csv(args.predictions)
     except (OSError, pd.errors.ParserError) as e:
@@ -195,6 +255,86 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  - {result['evidence_json']}  (sha256={result['evidence_json_sha256'][:12]}...)")
     print(f"  - {result['audit_sha256']}")
     return 0
+
+
+def _run_compare(args: argparse.Namespace) -> int:
+    labels = [c.strip() for c in args.labels.split(",") if c.strip()]
+    if len(labels) != len(args.predictions):
+        print(
+            f"ERROR: got {len(args.predictions)} predictions paths but {len(labels)} labels.",
+            file=sys.stderr,
+        )
+        return 1
+    protected = [a.strip() for a in args.protected_attrs.split(",") if a.strip()]
+
+    dfs: list[pd.DataFrame] = []
+    for path in args.predictions:
+        try:
+            sub_df = pd.read_csv(path)
+        except (OSError, pd.errors.ParserError) as e:
+            print(f"ERROR: could not read {path}: {e}", file=sys.stderr)
+            return 1
+        errs, _ = _validate_dataframe(sub_df, protected, args.num_classes)
+        if errs:
+            for err in errs:
+                print(f"ERROR ({path}): {err}", file=sys.stderr)
+            return 1
+        dfs.append(sub_df)
+
+    demog_attrs = [a for a in protected if a != args.site_attribute]
+    result = compare_models(
+        dfs,
+        labels,
+        site_attribute=args.site_attribute,
+        demographic_attributes=demog_attrs,
+        num_classes=args.num_classes,
+        fairness_floor=args.fairness_floor,
+    )
+
+    out = Path(args.output)
+    out.mkdir(parents=True, exist_ok=True)
+    json_text = json.dumps(
+        {
+            "tool": "fmm-fairness-eval",
+            "tool_version": __version__,
+            "command": "compare",
+            "predictions_files": list(args.predictions),
+            "labels": labels,
+            "fairness_floor": args.fairness_floor,
+            "result": result.to_dict(),
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    md_text = render_comparison_markdown(result)
+    json_path = out / "comparison-evidence.json"
+    md_path = out / "comparison-report.md"
+    audit_path = out / "audit.sha256"
+    json_path.write_text(json_text, encoding="utf-8")
+    md_path.write_text(md_text, encoding="utf-8")
+    json_sha = hashlib.sha256(json_text.encode("utf-8")).hexdigest()
+    md_sha = hashlib.sha256(md_text.encode("utf-8")).hexdigest()
+    audit_path.write_text(
+        f"{json_sha}  comparison-evidence.json\n{md_sha}  comparison-report.md\n",
+        encoding="utf-8",
+    )
+    print(f"OK: wrote comparison pack to {args.output}/")
+    print(f"  - {md_path}  (sha256={md_sha[:12]}...)")
+    print(f"  - {json_path}  (sha256={json_sha[:12]}...)")
+    print(f"  - {audit_path}")
+    print(f"  Frontier: {', '.join(result.pareto_frontier_labels) or '(empty)'}")
+    if result.recommended_label is not None:
+        print(f"  Recommended: {result.recommended_label}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    if args.command == "evaluate":
+        return _run_evaluate(args)
+    if args.command == "compare":
+        return _run_compare(args)
+    return 2
 
 
 if __name__ == "__main__":

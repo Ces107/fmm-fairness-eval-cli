@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a3 -- 2026-05-21 (foundation-model comparison mode — roadmap S3)
+
+- New CLI subcommand `fmm-fairness compare <csv1> <csv2> ... --labels uni,conch,plip,...` that ranks foundation-model candidates on a joint accuracy + fairness Pareto frontier and recommends one under an EU AI Act Art. 9 residual-risk heuristic.
+- New module `fmm_fairness.comparison`:
+  - `compare_models(dfs, labels, ...)` returns a `ComparisonResult` carrying per-model `ModelEvaluation`s (overall weighted/macro F1, inter-site weighted/macro F1 gap, SaMD fairness score), the Pareto-frontier and dominated label sets, and the recommended candidate with rationale.
+  - `_pareto_frontier(points)` computes non-dominated indices over (perf, gap) point pairs with the convention higher-perf and lower-gap are both better.
+  - `_recommend_from_frontier(...)` picks the frontier candidate with the highest overall weighted F1 subject to `--fairness-floor`; falls back to the fairest frontier candidate if no candidate meets the floor, with an explicit rationale flag.
+- Comparison evidence pack: `comparison-report.md` + `comparison-evidence.json` + `audit.sha256`, parallel to the `evaluate` pack shape.
+- 12 new tests: Pareto-frontier unit tests (dominance, ties, identity), three-candidate `uni/conch/plip` synthetic comparison with hand-verified relative ordering, tight-floor fallback path, CLI end-to-end test, mismatched-label validation.
+- New `docs/foundation-model-comparison.md` covering frontier semantics, the AI Act Art. 9 framing, a worked three-candidate example, limitations, and references.
+
 ## v0.2.0a2 -- 2026-05-21 (inter-rater agreement — roadmap S2)
 
 - New module `fmm_fairness.agreement` with the four canonical inter-rater agreement statistics:
