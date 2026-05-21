@@ -2,6 +2,15 @@
 
 > SaMD-specific fairness evaluation CLI for foundation-model medical AI. Emits AI Act Art. 10 / Art. 9 evidence artifacts.
 
+## Pricing
+
+- **CLI — Free**. OSS Python CLI, MIT-licensed, fairness metrics + audit chain.
+- **Hosted CI — €99/mo**. Hosted runner on customer prediction CSVs, monthly evidence pack.
+- **Consulting — €60-100/hour**. Fairness-evidence drafting, AI Act Art. 9 / Art. 10 dossier review, Calendly booking.
+
+[Stripe Payment Link — wiring 2026-05-21]. See `pricing.md` for tier details.
+
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
@@ -57,14 +66,32 @@ fmm-fairness evaluate predictions.csv \
     --output fairness-report/
 ```
 
-`predictions.csv` must contain these columns:
+`predictions.csv` must contain these columns. The score-column shape depends on the number of classes `K` your model produces.
 
-| column     | type                              | meaning                                            |
-|------------|-----------------------------------|----------------------------------------------------|
-| `y_true`   | int ∈ {0, 1}                      | Ground-truth label                                  |
-| `y_pred`   | int ∈ {0, 1}                      | Thresholded prediction                              |
-| `y_score`  | float ∈ [0, 1]                    | Raw model probability / score                       |
-| (declared) | str                               | One column per `--protected-attrs` value            |
+**Binary (K = 2):**
+
+| column     | type             | meaning                                  |
+|------------|------------------|------------------------------------------|
+| `y_true`   | int ∈ {0, 1}     | Ground-truth label                       |
+| `y_pred`   | int ∈ {0, 1}     | Thresholded prediction                   |
+| `y_score`  | float ∈ [0, 1]   | Raw model probability `P(class = 1)`     |
+| (declared) | str              | One column per `--protected-attrs` value |
+
+**Multi-class (K ≥ 2):**
+
+| column            | type              | meaning                                  |
+|-------------------|-------------------|------------------------------------------|
+| `y_true`          | int ∈ {0..K-1}    | Ground-truth label                       |
+| `y_pred`          | int ∈ {0..K-1}    | Argmax prediction                        |
+| `y_score_0`       | float ∈ [0, 1]    | `P(class = 0)`                           |
+| `y_score_1`       | float ∈ [0, 1]    | `P(class = 1)`                           |
+| ...               | ...               | ...                                      |
+| `y_score_{K-1}`   | float ∈ [0, 1]    | `P(class = K-1)` (rows sum to ~1.0)      |
+| (declared)        | str               | One column per `--protected-attrs` value |
+
+The CLI auto-detects `K` from the score columns. Pass `--num-classes K` to override or to assert the expected value; a mismatch with the detected shape triggers a warning.
+
+For multi-class inputs the evidence pack carries the F1-family fairness metrics (`weighted_f1_gap`, `macro_f1_gap`, `per_class_f1_gap`, `multi_class_auc_gap`); see [`docs/multi-class-metrics.md`](docs/multi-class-metrics.md) for definitions. For binary inputs the v0.1 metrics (`equal_opportunity_gap`, `demographic_parity_gap`, `calibration_gap`) are retained.
 
 ### 2. Read the output
 

@@ -4,54 +4,67 @@ This document defends the composite metric `samd_fairness_score` shipped in `fmm
 
 ---
 
-## 1. Formula
+## 1. Formula (v0.2)
 
-Let `D` be the set of declared demographic protected attributes (e.g. `{sex, age_bucket}`). Let `s` be the site/hospital attribute (default name: `site`).
+Let `D` be the set of declared demographic protected attributes (e.g. `{sex, age_bucket}`). Let `s` be the site/hospital attribute (default name: `site`). Let `K` be the number of classes.
 
 Define:
 
-- `EO  = mean_{a ∈ D} equal_opportunity_gap(a)`
-- `DP  = mean_{a ∈ D} demographic_parity_gap(a)`
-- `CAL = mean_{a ∈ D} calibration_gap(a)`
-- `SITE = min(1, 2 * sqrt(Var_{g ∈ s}(AUC(g))))`
+- `F1_SITE = weighted_f1_gap(s)` — the support-weighted F1 max-min across sites. New in v0.2; this is the TFG headline disparity.
+- `SITE    = min(1, 2 * sqrt(Var_{g ∈ s}(AUC(g))))` — K-aware: binary AUC for `K=2`, OVR macro AUC for `K>2`.
+- `EO      = mean_{a ∈ D} equal_opportunity_gap(a)` — binary only.
+- `DP      = mean_{a ∈ D} demographic_parity_gap(a)` — binary only.
+- `CAL     = mean_{a ∈ D} calibration_gap(a)` — binary only.
 
 Then:
 
 ```
-samd_fairness_score = 1 - clip( w_site * SITE + w_eo * EO + w_dp * DP + w_cal * CAL, 0, 1 )
+raw   = w_f1_site * F1_SITE + w_site * SITE + w_eo * EO + w_dp * DP + w_cal * CAL
+score = 1 - clip(raw, 0, 1)
 ```
 
-with default weights `w_site = 0.40, w_eo = 0.30, w_dp = 0.15, w_cal = 0.15` (sum to 1.0).
+with default weights `w_f1_site = 0.35, w_site = 0.20, w_eo = 0.20, w_dp = 0.10, w_cal = 0.15` (sum to 1.0).
+
+When `K > 2` the binary-only terms collapse to zero and the remaining
+`{w_f1_site, w_site}` are renormalised to sum to 1.0 over their pair. This
+preserves the `[0, 1]` range of the deduction without distorting the
+relative weighting of the two terms that are defined for any K. The output
+dictionary carries both `weights` (effective, post-renormalisation) and
+`weights_declared` (the inputs) so the audit trail is unambiguous.
 
 Range: `[0, 1]` where **1 = perfectly fair** (no measured gaps) and **0 = maximally unfair** (gaps saturate the unit interval).
 
-The `2 * sqrt(...)` rescaling on `SITE` maps the realistic range of inter-site AUC standard deviation (≈ 0 to 0.5) onto `[0, 1]`. Empirically, an AUC standard deviation of 0.10 across 3–5 sites already corresponds to "the model is unsafe to deploy at sites it was not validated at"; that maps to `SITE = 0.2`, contributing `0.08` to the score deduction at default weights.
+The `2 * sqrt(...)` rescaling on `SITE` maps the realistic range of inter-site AUC standard deviation (≈ 0 to 0.5) onto `[0, 1]`. Empirically, an AUC standard deviation of 0.10 across 3–5 sites already corresponds to "the model is unsafe to deploy at sites it was not validated at"; that maps to `SITE = 0.2`, contributing `0.04` to the score deduction at default weights.
 
 ---
 
-## 2. Why these four components
+## 2. Why these components
 
-A SaMD fairness audit must answer four distinct regulator-facing questions:
+A SaMD fairness audit must answer five distinct regulator-facing questions:
 
-1. **Does the model miss disease equally across protected groups?** → `equal_opportunity_gap`, the TPR-gap criterion of Hardt, Price, Srebro (NeurIPS 2016).
-2. **Does the model treat groups symmetrically in selection rate?** → `demographic_parity_gap`, the classical statistical-parity criterion of Dwork et al. (ITCS 2012).
-3. **Is the score trustworthy to the same degree across groups?** → `calibration_gap`, motivated by Pleiss et al. (NeurIPS 2017) on the incompatibility of calibration and TPR-equality.
-4. **Does the model generalize across hospital boundaries?** → `inter_site_auc_variance`, the practical SaMD failure mode emphasized by Seyyed-Kalantari et al. (Nat. Med. 2021) and the FDA/IMDRF Good Machine Learning Practice (GMLP) guiding principles (2021, updated IMDRF January 2025).
+1. **What is the headline real-world performance disparity across sites?** → `weighted_f1_gap` at the site attribute, the K-aware support-weighted F1 max-min. This is the TFG headline figure and the question deployment review committees actually ask.
+2. **Does the model miss disease equally across protected groups?** → `equal_opportunity_gap`, the TPR-gap criterion of Hardt, Price, Srebro (NeurIPS 2016). Defined for binary outcomes.
+3. **Does the model treat groups symmetrically in selection rate?** → `demographic_parity_gap`, the classical statistical-parity criterion of Dwork et al. (ITCS 2012). Defined for binary outcomes.
+4. **Is the score trustworthy to the same degree across groups?** → `calibration_gap`, motivated by Pleiss et al. (NeurIPS 2017) on the incompatibility of calibration and TPR-equality. Defined for binary outcomes.
+5. **Does the model generalize across hospital boundaries?** → `inter_site_auc_variance`, the practical SaMD failure mode emphasised by Seyyed-Kalantari et al. (Nat. Med. 2021) and the FDA/IMDRF Good Machine Learning Practice (GMLP) guiding principles (2021, updated IMDRF January 2025). K-aware: binary AUC for K=2, OVR macro AUC for K>2.
 
-Dropping any of the four loses a regulator-facing answer. Adding more (e.g. equalized odds, predictive parity) would either duplicate signal already in (1)+(2)+(3) or import the well-known impossibility-theorem trilemma (Chouldechova 2017, Kleinberg-Mullainathan-Raghavan 2017) into a single number, which is precisely what a defensible composite must avoid.
+Dropping any of the five loses a regulator-facing answer. Adding more (e.g. equalized odds, predictive parity) would either duplicate signal already in (2)+(3)+(4) or import the well-known impossibility-theorem trilemma (Chouldechova 2017, Kleinberg-Mullainathan-Raghavan 2017) into a single number, which is precisely what a defensible composite must avoid.
+
+The `F1_SITE` component is new in v0.2 and is the dominant weight (0.35) because it is the failure mode the underlying TFG actually measured and the one that is robust to the binary-vs-multi-class distinction. The `SITE` term (AUC-variance) sits alongside it at 0.20: it answers a different question (rank-ordering stability) than `F1_SITE` (decision quality), so the two are kept distinct rather than collapsed.
 
 ---
 
 ## 3. Why these weights
 
-FDA GMLP (2021) and the EU AI Act (Art. 9 + Art. 10, 2024/1689) both place **multi-site representativeness and generalization** as a first-tier obligation. The IMDRF GMLP guiding principles (January 2025) call out "Representative Data in Clinical Studies" and explicitly flag patient populations not well-represented in training as a transparency obligation. The dermatology AI fairness literature (Roy et al. 2022 / FairDisCo and follow-ups; Daneshjou et al. 2022 *Sci. Adv.* on skin-tone disparities) consistently shows that under-representation translates more directly into TPR gaps than into selection-rate gaps. This justifies:
+FDA GMLP (2021) and the EU AI Act (Art. 9 + Art. 10, 2024/1689) both place **multi-site representativeness and generalization** as a first-tier obligation. The IMDRF GMLP guiding principles (January 2025) call out "Representative Data in Clinical Studies" and explicitly flag patient populations not well-represented in training as a transparency obligation. The dermatology AI fairness literature (Roy et al. 2022 / FairDisCo and follow-ups; Daneshjou et al. 2022 *Sci. Adv.* on skin-tone disparities) consistently shows that under-representation translates more directly into per-class F1 collapses and TPR gaps than into selection-rate gaps. This justifies:
 
-- **`w_site = 0.40`**: the regulator-priority component, the failure mode this tool is named for, and the one no other OSS fairness library packages as a first-class metric.
-- **`w_eo = 0.30`**: TPR-gap is the medical-AI-relevant fairness criterion par excellence (Pierson et al. 2021, Seyyed-Kalantari et al. 2021). A missed cancer in one subgroup is the harm a regulator will write up.
-- **`w_dp = 0.15`**: demographic parity is a less-clinically-meaningful criterion in medicine (prevalence rightly varies by subgroup), so it is downweighted but kept for symmetry with non-medical fairness frameworks.
-- **`w_cal = 0.15`**: calibration matters most for thresholding and clinical-decision-support workflows; in raw classification it is secondary.
+- **`w_f1_site = 0.35`**: the headline inter-site disparity in real-world decision quality, K-aware, and the failure mode the underlying TFG actually measured. No other OSS fairness library packages this as a first-class metric.
+- **`w_site = 0.20`**: complementary to `w_f1_site`; AUC-variance measures rank-ordering stability across sites, an independent failure mode from decision-quality drop.
+- **`w_eo = 0.20`**: TPR-gap is the medical-AI-relevant binary fairness criterion par excellence (Pierson et al. 2021, Seyyed-Kalantari et al. 2021). Active only for K=2.
+- **`w_dp = 0.10`**: demographic parity is a less-clinically-meaningful criterion in medicine (prevalence rightly varies by subgroup), so it is downweighted but kept for symmetry with non-medical fairness frameworks. Active only for K=2.
+- **`w_cal = 0.15`**: calibration matters most for thresholding and clinical-decision-support workflows; in raw classification it is secondary. Active only for K=2.
 
-These are defaults, not commandments. Override via the `weights` argument or report the four components separately.
+These are defaults, not commandments. Override via the `weights` argument or report the five components separately. The composite output always exposes both the effective weights (after K-aware renormalisation) and the originally declared weights.
 
 ---
 
@@ -62,12 +75,20 @@ The composite is sensitive to weights, as any weighted sum is. Two notes:
 - **Monotonicity is preserved.** For any non-negative weights summing to 1, increasing any underlying gap can only decrease the score. This is desirable.
 - **A bias hidden in one component can be hidden in the composite.** If your model has a large EO gap but a tiny SITE gap, the default weighting will compress that signal. **Always read the components, not only the composite.** The tool reports both.
 
-A worked example: suppose `EO = 0.20, DP = 0.05, CAL = 0.05, SITE = 0.10`. With default weights:
+A worked binary example: suppose `F1_SITE = 0.18, SITE = 0.10, EO = 0.20, DP = 0.05, CAL = 0.05`. With v0.2 default weights:
 ```
-raw = 0.40·0.10 + 0.30·0.20 + 0.15·0.05 + 0.15·0.05 = 0.04 + 0.06 + 0.0075 + 0.0075 = 0.115
-score = 1 - 0.115 = 0.885
+raw   = 0.35·0.18 + 0.20·0.10 + 0.20·0.20 + 0.10·0.05 + 0.15·0.05
+      = 0.0630 + 0.0200 + 0.0400 + 0.0050 + 0.0075 = 0.1355
+score = 1 - 0.1355 = 0.8645
 ```
-A model scoring 0.885 has a real 20-percentage-point TPR disparity that should not be papered over by the headline number.
+A model scoring 0.86 has a real 20-percentage-point TPR disparity AND a 0.18 inter-site weighted-F1 gap that should not be papered over by the headline number.
+
+A worked multi-class example (K=6): suppose `F1_SITE = 0.19, SITE = 0.10`. The binary-only weights collapse to zero and `{w_f1_site, w_site}` renormalise to `{0.35/0.55, 0.20/0.55} = {0.636, 0.364}`:
+```
+raw   = 0.636·0.19 + 0.364·0.10 = 0.1209 + 0.0364 = 0.1573
+score = 1 - 0.1573 = 0.8427
+```
+This is exactly the TFG-headline case. A 0.84 composite is consistent with a model that *is* deployable at the lead site but not portable across the network boundary without site-specific re-calibration.
 
 ---
 
