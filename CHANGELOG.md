@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a2 -- 2026-05-21 (inter-rater agreement — roadmap S2)
+
+- New module `fmm_fairness.agreement` with the four canonical inter-rater agreement statistics:
+  - `cohen_kappa_matrix(df, rater_cols, ai_col=None, stratify_by=None)` — pairwise Cohen kappa across raters and (optionally) the AI column. Pairwise missing-value handling (sentinel -1 by default). Optional per-stratum matrix when a stratifying column is given.
+  - `fleiss_kappa(df, rater_cols)` — single global agreement scalar for a fixed-N rater panel. Items with any missing rating are excluded.
+  - `krippendorff_alpha(df, rater_cols)` — nominal-scale alpha; tolerates missing ratings via per-item disagreement counting.
+  - `ai_vs_pooled_raters_kappa(df, rater_cols, ai_col)` — Cohen kappa between AI predictions and the per-item majority vote of the raters, with percentile-bootstrap 95% CI. The headline SaMD validation scalar.
+- CLI: new `--rater-cols doc1,doc2,...,doc10` flag plus `--rater-missing-value` override.
+- Evidence pack gains an `inter_rater_agreement` block when rater columns are declared, with the full statistics suite plus a per-site stratified Cohen kappa matrix when the site attribute is present. Markdown report renders the global matrix inline.
+- AI Act manifest mode (`--manifest-mode ai-act`) cross-cites the agreement statistics to Art. 14 (human oversight).
+- 17 new tests covering perfect-agreement identity cases, a hand-verified Fleiss kappa textbook example, a small Krippendorff alpha case with hand-verified value, missing-rating tolerance, per-site stratification, AI-vs-pooled kappa with independent random fixture, and full CLI end-to-end with the AI4SkIN-shaped fixture extended with 10 synthetic rater columns.
+- New `docs/inter-rater-agreement.md` covering all four statistics, the Landis-Koch interpretation cut-offs, pooled-vs-pairwise rationale, tie-break choice, regulatory mapping, and references.
+
 ## v0.2.0a1 -- 2026-05-21 (multi-class data model — roadmap S1)
 
 - Multi-class data model: y_true/y_pred in {0..K-1}; scores either binary `y_score` or per-class `y_score_0..y_score_{K-1}`. K auto-detected from the score columns; `--num-classes K` flag overrides with a warning on mismatch.

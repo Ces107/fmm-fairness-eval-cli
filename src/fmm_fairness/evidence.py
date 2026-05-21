@@ -22,6 +22,10 @@ from typing import Any
 import pandas as pd
 
 from fmm_fairness import __version__
+from fmm_fairness.agreement import (
+    MISSING_VALUE_DEFAULT,
+    build_inter_rater_evidence,
+)
 from fmm_fairness.metrics import (
     calibration_gap,
     demographic_parity_gap,
@@ -51,6 +55,9 @@ class EvaluationConfig:
     output_dir: str = "fairness-report"
     timestamp_iso: str | None = None   # injectable for deterministic tests
     num_classes: int | None = None     # explicit K; None => auto-detect
+    rater_cols: list[str] | None = None
+    rater_missing_value: int = MISSING_VALUE_DEFAULT
+    ai_col: str = "y_pred"             # column compared against pooled raters
 
 
 def _sha256_text(text: str) -> str:
@@ -109,6 +116,15 @@ def build_evidence(df: pd.DataFrame, cfg: EvaluationConfig) -> dict[str, Any]:
         "inter_site": site_metric,
         "samd_fairness_score": composite,
     }
+    if cfg.rater_cols:
+        stratify = cfg.site_attribute if cfg.site_attribute in df.columns else None
+        evidence["inter_rater_agreement"] = build_inter_rater_evidence(
+            df,
+            cfg.rater_cols,
+            ai_col=cfg.ai_col,
+            missing_value=cfg.rater_missing_value,
+            stratify_by=stratify,
+        )
     if cfg.manifest_mode == "ai-act":
         evidence["regulatory_mapping"] = _ai_act_mapping(K)
     return evidence
@@ -151,6 +167,21 @@ def _ai_act_mapping(num_classes: int) -> dict[str, Any]:
                     "Per-attribute breakdown evidences Art. 10(2)(f-g) examination of "
                     "biases and shortcomings. Multi-class deployments use the F1 family; "
                     "binary deployments retain EO / DP / CAL."
+                ),
+            },
+            {
+                "article": "Art. 14",
+                "title": "Human oversight",
+                "mapped_metrics": [
+                    "cohen_kappa_matrix",
+                    "fleiss_kappa",
+                    "krippendorff_alpha",
+                    "ai_vs_pooled_raters_kappa",
+                ],
+                "note": (
+                    "Inter-rater agreement statistics (when --rater-cols is provided) "
+                    "document the human-expert reference against which the AI is "
+                    "evaluated, evidencing the Art. 14 human-oversight obligation."
                 ),
             },
             {
@@ -238,6 +269,49 @@ def render_markdown(evidence: dict[str, Any]) -> str:
             lines.extend(_format_per_group_lines(m))
             if m["excluded_groups"]:
                 lines.append(f"  - Excluded (n<min): {m['excluded_groups']}")
+        lines.append("")
+    if evidence.get("inter_rater_agreement"):
+        lines.append("## Inter-rater agreement (clinician vs AI)")
+        block = evidence["inter_rater_agreement"]
+        lines.append(f"- **Rater columns**: {', '.join(block['rater_columns'])}")
+        if block.get("ai_column"):
+            lines.append(f"- **AI column**: `{block['ai_column']}`")
+        lines.append(
+            f"- **Missing-value sentinel**: {block['missing_value_sentinel']}"
+        )
+        fk = block["fleiss_kappa"]
+        ka = block["krippendorff_alpha"]
+        fk_str = "n/a" if fk["value"] is None else f"{fk['value']:.4f}"
+        ka_str = "n/a" if ka["value"] is None else f"{ka['value']:.4f}"
+        lines.append(
+            f"- **Fleiss kappa**: {fk_str} (n={fk['n_items']})"
+        )
+        lines.append(
+            f"- **Krippendorff alpha (nominal)**: {ka_str} (n={ka['n_items']})"
+        )
+        if "ai_vs_pooled_raters_kappa" in block:
+            ai_k = block["ai_vs_pooled_raters_kappa"]
+            ai_str = "n/a" if ai_k["value"] is None else f"{ai_k['value']:.4f}"
+            ci_str = ""
+            if "ci_low" in ai_k:
+                ci_str = f"  [95% CI: {ai_k['ci_low']:.4f}, {ai_k['ci_high']:.4f}]"
+            lines.append(
+                f"- **AI vs pooled-raters Cohen kappa**: {ai_str}{ci_str} (n={ai_k['n_items']})"
+            )
+        mat = block.get("cohen_kappa_matrix")
+        if mat:
+            lines.append("- **Cohen kappa matrix** (raters and AI):")
+            header = "    | " + " | ".join(mat["raters"]) + " |"
+            sep = "    | " + " | ".join("---" for _ in mat["raters"]) + " |"
+            lines.append(header)
+            lines.append(sep)
+            for r, row in zip(mat["raters"], mat["matrix"], strict=True):
+                cells = ["n/a" if v is None else f"{v:.3f}" for v in row]
+                lines.append(f"    | **{r}** | " + " | ".join(cells) + " |")
+        if "cohen_kappa_matrix_by_stratum" in block:
+            lines.append(
+                f"- **Per-{block['stratified_by']} kappa matrix** present in JSON evidence."
+            )
         lines.append("")
     if evidence.get("regulatory_mapping"):
         lines.append("## Regulatory mapping")

@@ -58,6 +58,25 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     ev.add_argument(
+        "--rater-cols",
+        default=None,
+        help=(
+            "Comma-separated names of clinician-rater columns to use for inter-rater "
+            "agreement (e.g. 'doc1,doc2,doc3,...,doc10'). When provided, the evidence "
+            "pack gains an inter_rater_agreement block (Cohen kappa matrix, Fleiss kappa, "
+            "Krippendorff alpha, AI-vs-pooled-raters kappa with bootstrap CI)."
+        ),
+    )
+    ev.add_argument(
+        "--rater-missing-value",
+        type=int,
+        default=-1,
+        help=(
+            "Sentinel value used in rater columns for an unrated cell (default: -1, "
+            "matches the underlying TFG convention)."
+        ),
+    )
+    ev.add_argument(
         "--output",
         default="fairness-report",
         help="Output directory for the evidence pack (default: fairness-report/).",
@@ -72,7 +91,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _validate_dataframe(
-    df: pd.DataFrame, protected_attrs: list[str], num_classes_arg: int | None
+    df: pd.DataFrame,
+    protected_attrs: list[str],
+    num_classes_arg: int | None,
+    rater_cols: list[str] | None = None,
 ) -> tuple[list[str], int | None]:
     """Return (error messages, resolved K). Empty error list => OK."""
     errors: list[str] = []
@@ -128,6 +150,13 @@ def _validate_dataframe(
                 f"Multi-class score columns must be in [0.0, 1.0]; columns: {multi_cols}.",
             )
 
+    if rater_cols:
+        missing_rater_cols = [c for c in rater_cols if c not in df.columns]
+        if missing_rater_cols:
+            errors.append(
+                f"Declared rater columns not in CSV: {missing_rater_cols}.",
+            )
+
     return errors, K
 
 
@@ -141,7 +170,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: could not read predictions CSV: {e}", file=sys.stderr)
         return 1
     protected = [a.strip() for a in args.protected_attrs.split(",") if a.strip()]
-    errs, resolved_k = _validate_dataframe(df, protected, args.num_classes)
+    rater_cols: list[str] | None = None
+    if args.rater_cols:
+        rater_cols = [c.strip() for c in args.rater_cols.split(",") if c.strip()]
+    errs, resolved_k = _validate_dataframe(df, protected, args.num_classes, rater_cols)
     if errs:
         for err in errs:
             print(f"ERROR: {err}", file=sys.stderr)
@@ -153,6 +185,8 @@ def main(argv: list[str] | None = None) -> int:
         manifest_mode=args.manifest_mode,
         output_dir=args.output,
         num_classes=resolved_k,
+        rater_cols=rater_cols,
+        rater_missing_value=args.rater_missing_value,
     )
     result = write_evidence_pack(df, cfg)
     print(f"OK: wrote evidence pack to {args.output}/")
