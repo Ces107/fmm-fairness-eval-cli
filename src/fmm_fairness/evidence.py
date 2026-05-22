@@ -58,6 +58,11 @@ class EvaluationConfig:
     rater_cols: list[str] | None = None
     rater_missing_value: int = MISSING_VALUE_DEFAULT
     ai_col: str = "y_pred"             # column compared against pooled raters
+    bootstrap_method: str = "bca"      # "bca" | "percentile"
+    bootstrap_iters: int = 1000
+    permutation_iters: int = 0         # 0 disables; >0 emits p-value + null dist
+    alpha: float = 0.05
+    power: float = 0.80
 
 
 def _sha256_text(text: str) -> str:
@@ -69,7 +74,7 @@ def _isoformat_now() -> str:
 
 
 def _per_attribute_block(
-    df: pd.DataFrame, attr: str, K: int
+    df: pd.DataFrame, attr: str, K: int, cfg: EvaluationConfig
 ) -> dict[str, Any]:
     """All per-attribute metrics. K-aware (binary vs multi-class)."""
     block: dict[str, Any] = {}
@@ -77,8 +82,26 @@ def _per_attribute_block(
         block["equal_opportunity_gap"] = equal_opportunity_gap(df, attr).to_dict()
         block["demographic_parity_gap"] = demographic_parity_gap(df, attr).to_dict()
         block["calibration_gap"] = calibration_gap(df, attr).to_dict()
-    block["weighted_f1_gap"] = weighted_f1_gap(df, attr, num_classes=K).to_dict()
-    block["macro_f1_gap"] = macro_f1_gap(df, attr, num_classes=K).to_dict()
+    block["weighted_f1_gap"] = weighted_f1_gap(
+        df,
+        attr,
+        num_classes=K,
+        bootstrap_iters=cfg.bootstrap_iters,
+        bootstrap_method=cfg.bootstrap_method,
+        permutation_iters=cfg.permutation_iters,
+        alpha=cfg.alpha,
+        power=cfg.power,
+    ).to_dict()
+    block["macro_f1_gap"] = macro_f1_gap(
+        df,
+        attr,
+        num_classes=K,
+        bootstrap_iters=cfg.bootstrap_iters,
+        bootstrap_method=cfg.bootstrap_method,
+        permutation_iters=cfg.permutation_iters,
+        alpha=cfg.alpha,
+        power=cfg.power,
+    ).to_dict()
     block["per_class_f1_gap"] = per_class_f1_gap(df, attr, num_classes=K).to_dict()
     block["multi_class_auc_gap"] = multi_class_auc_gap(df, attr, num_classes=K).to_dict()
     return block
@@ -89,7 +112,7 @@ def build_evidence(df: pd.DataFrame, cfg: EvaluationConfig) -> dict[str, Any]:
     ts = cfg.timestamp_iso or _isoformat_now()
     K = detect_num_classes(df, cfg.num_classes)
     demog_attrs = [a for a in cfg.protected_attrs if a != cfg.site_attribute]
-    per_attribute = {a: _per_attribute_block(df, a, K) for a in cfg.protected_attrs}
+    per_attribute = {a: _per_attribute_block(df, a, K, cfg) for a in cfg.protected_attrs}
     site_metric = (
         inter_site_auc_variance(df, cfg.site_attribute, num_classes=K).to_dict()
         if cfg.site_attribute in df.columns

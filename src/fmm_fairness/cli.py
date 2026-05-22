@@ -72,6 +72,43 @@ def _add_evaluate(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         help=("Sentinel value used in rater columns for an unrated cell (default: -1)."),
     )
     ev.add_argument(
+        "--bootstrap-method",
+        choices=["bca", "percentile"],
+        default="bca",
+        help=(
+            "Bootstrap CI method for the F1 family gap metrics. 'bca' "
+            "(default) is bias-corrected and accelerated (Efron 1987); "
+            "'percentile' is the v0.1-compatible interval."
+        ),
+    )
+    ev.add_argument(
+        "--bootstrap-iters",
+        type=int,
+        default=1000,
+        help="Number of bootstrap iterations for the F1 family CIs (default: 1000).",
+    )
+    ev.add_argument(
+        "--permutation-iters",
+        type=int,
+        default=0,
+        help=(
+            "If > 0, run a label-shuffle permutation test for H0='no gap' "
+            "on the F1 family metrics and emit a p-value. Default 0 (off)."
+        ),
+    )
+    ev.add_argument(
+        "--alpha",
+        type=float,
+        default=0.05,
+        help="Significance level for the CI and MDE (default: 0.05).",
+    )
+    ev.add_argument(
+        "--power",
+        type=float,
+        default=0.80,
+        help="Power target for the minimum detectable effect (default: 0.80).",
+    )
+    ev.add_argument(
         "--output",
         default="fairness-report",
         help="Output directory for the evidence pack (default: fairness-report/).",
@@ -247,6 +284,11 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         num_classes=resolved_k,
         rater_cols=rater_cols,
         rater_missing_value=args.rater_missing_value,
+        bootstrap_method=args.bootstrap_method,
+        bootstrap_iters=args.bootstrap_iters,
+        permutation_iters=args.permutation_iters,
+        alpha=args.alpha,
+        power=args.power,
     )
     result = write_evidence_pack(df, cfg)
     print(f"OK: wrote evidence pack to {args.output}/")

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fmm-fairness-eval"
-version = "0.2.0a3"
+version = "0.2.0a4"
 description = "SaMD-specific fairness evaluation CLI for foundation-model medical AI; emits AI Act Art. 10 / Art. 9 evidence artifacts"
 readme = "README.md"
 license = {text = "MIT"}
@@ -34,6 +34,7 @@ dependencies = [
     "numpy>=1.24",
     "pandas>=2.0",
     "scikit-learn>=1.3",
+    "scipy>=1.10",
 ]
 
 [project.optional-dependencies]

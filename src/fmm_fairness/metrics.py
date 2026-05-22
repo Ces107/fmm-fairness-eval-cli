@@ -111,6 +111,13 @@ class FairnessResult:
     gap_ci_high: float | None = None
     excluded_groups: list[str] = field(default_factory=list)
     per_class_gap: list[float] | None = None  # populated by per_class_f1_gap
+    bootstrap_method: str | None = None       # "bca" | "percentile"
+    bootstrap_se: float | None = None
+    permutation_p_value: float | None = None
+    permutation_iters: int | None = None
+    minimum_detectable_effect: float | None = None
+    alpha: float | None = None
+    power: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -124,6 +131,19 @@ class FairnessResult:
         }
         if self.per_class_gap is not None:
             d["per_class_gap"] = [float(v) for v in self.per_class_gap]
+        if self.bootstrap_method is not None:
+            d["bootstrap_method"] = self.bootstrap_method
+        if self.bootstrap_se is not None and not np.isnan(self.bootstrap_se):
+            d["bootstrap_se"] = float(self.bootstrap_se)
+        if self.permutation_p_value is not None:
+            d["permutation_p_value"] = float(self.permutation_p_value)
+            d["permutation_iters"] = self.permutation_iters
+        if self.minimum_detectable_effect is not None and not np.isnan(
+            self.minimum_detectable_effect
+        ):
+            d["minimum_detectable_effect"] = float(self.minimum_detectable_effect)
+            d["alpha"] = self.alpha
+            d["power"] = self.power
         return d
 
 
@@ -549,6 +569,45 @@ def calibration_gap(
 # ---------------------------------------------------------------------------
 
 
+def _attach_inference(
+    result: FairnessResult,
+    df_f: pd.DataFrame,
+    attribute: str,
+    per_group_fn: Callable[[pd.DataFrame], float],
+    *,
+    bootstrap_method: str,
+    bootstrap_iters: int,
+    permutation_iters: int,
+    alpha: float,
+    power: float,
+    seed: int,
+) -> FairnessResult:
+    """Attach BCa/percentile CI + optional permutation p-value + MDE to a result."""
+    from fmm_fairness.statistics import gap_inference
+
+    inf = gap_inference(
+        df_f,
+        attribute,
+        per_group_fn,
+        bootstrap_method=bootstrap_method,
+        n_bootstrap_iters=bootstrap_iters,
+        n_permutation_iters=permutation_iters,
+        alpha=alpha,
+        power=power,
+        seed=seed,
+    )
+    result.gap_ci_low = inf.ci_low
+    result.gap_ci_high = inf.ci_high
+    result.bootstrap_method = inf.bootstrap_method
+    result.bootstrap_se = inf.bootstrap_se
+    result.permutation_p_value = inf.permutation_p_value
+    result.permutation_iters = inf.permutation_iters
+    result.minimum_detectable_effect = inf.minimum_detectable_effect
+    result.alpha = inf.alpha
+    result.power = inf.power
+    return result
+
+
 def weighted_f1_gap(
     df: pd.DataFrame,
     attribute: str,
@@ -556,12 +615,18 @@ def weighted_f1_gap(
     num_classes: int | None = None,
     min_group_n: int = MIN_GROUP_N_DEFAULT,
     bootstrap_iters: int = BOOTSTRAP_ITERS_DEFAULT,
+    bootstrap_method: str = "bca",
+    permutation_iters: int = 0,
+    alpha: float = 0.05,
+    power: float = 0.80,
     seed: int = RNG_SEED_DEFAULT,
 ) -> FairnessResult:
     """Support-weighted F1 gap across protected groups.
 
     This is the headline inter-site fairness metric of the underlying TFG.
-    Defined for any K >= 2 (binary or multi-class).
+    Defined for any K >= 2 (binary or multi-class). Default CI method is
+    BCa (Efron 1987); permutation p-value is off by default to keep the
+    runtime under the test bootstrap budget, opt-in via ``permutation_iters``.
     """
     K = detect_num_classes(df, num_classes)
     df_f, excluded = _filter_groups(df, attribute, min_group_n)
@@ -575,21 +640,24 @@ def weighted_f1_gap(
         if not np.isnan(f1):
             f1s.append(f1)
     gap = (max(f1s) - min(f1s)) if len(f1s) >= 2 else 0.0
-    ci_low, ci_high = _bootstrap_gap(
-        df_f,
-        attribute,
-        lambda s: _weighted_f1(s["y_true"].to_numpy(), s["y_pred"].to_numpy(), K),
-        bootstrap_iters,
-        seed,
-    )
-    return FairnessResult(
+    result = FairnessResult(
         metric_name="weighted_f1_gap",
         attribute=attribute,
         per_group=per_group,
         gap=gap,
-        gap_ci_low=ci_low,
-        gap_ci_high=ci_high,
         excluded_groups=excluded,
+    )
+    return _attach_inference(
+        result,
+        df_f,
+        attribute,
+        lambda s: _weighted_f1(s["y_true"].to_numpy(), s["y_pred"].to_numpy(), K),
+        bootstrap_method=bootstrap_method,
+        bootstrap_iters=bootstrap_iters,
+        permutation_iters=permutation_iters,
+        alpha=alpha,
+        power=power,
+        seed=seed,
     )
 
 
@@ -600,6 +668,10 @@ def macro_f1_gap(
     num_classes: int | None = None,
     min_group_n: int = MIN_GROUP_N_DEFAULT,
     bootstrap_iters: int = BOOTSTRAP_ITERS_DEFAULT,
+    bootstrap_method: str = "bca",
+    permutation_iters: int = 0,
+    alpha: float = 0.05,
+    power: float = 0.80,
     seed: int = RNG_SEED_DEFAULT,
 ) -> FairnessResult:
     """Macro F1 gap across protected groups (equal class weight)."""
@@ -613,21 +685,24 @@ def macro_f1_gap(
         if not np.isnan(f1):
             f1s.append(f1)
     gap = (max(f1s) - min(f1s)) if len(f1s) >= 2 else 0.0
-    ci_low, ci_high = _bootstrap_gap(
-        df_f,
-        attribute,
-        lambda s: _macro_f1(s["y_true"].to_numpy(), s["y_pred"].to_numpy(), K),
-        bootstrap_iters,
-        seed,
-    )
-    return FairnessResult(
+    result = FairnessResult(
         metric_name="macro_f1_gap",
         attribute=attribute,
         per_group=per_group,
         gap=gap,
-        gap_ci_low=ci_low,
-        gap_ci_high=ci_high,
         excluded_groups=excluded,
+    )
+    return _attach_inference(
+        result,
+        df_f,
+        attribute,
+        lambda s: _macro_f1(s["y_true"].to_numpy(), s["y_pred"].to_numpy(), K),
+        bootstrap_method=bootstrap_method,
+        bootstrap_iters=bootstrap_iters,
+        permutation_iters=permutation_iters,
+        alpha=alpha,
+        power=power,
+        seed=seed,
     )
 
 

@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a4 -- 2026-05-21 (statistical rigour — roadmap S4)
+
+- New module `fmm_fairness.statistics` providing the v0.2-roadmap inference layer:
+  - `bca_bootstrap_gap_ci(...)` — bias-corrected and accelerated (Efron 1987) bootstrap CI over a per-group statistic's max-min gap. Falls back to percentile when BCa endpoints are degenerate.
+  - `percentile_bootstrap_gap_ci(...)` — preserved v0.1-compatible interval, available behind a flag.
+  - `permutation_test_gap_pvalue(...)` — two-sided label-shuffle permutation test for `H0 = no gap` with the standard `(n_extreme + 1) / (n_iters + 1)` plug-in.
+  - `minimum_detectable_effect(bootstrap_se, alpha, power)` — `(z_{1 - alpha/2} + z_{power}) * SE_gap` MDE summary; uses the bootstrap SE so it works without a closed-form variance.
+  - `cohens_d(...)` and `odds_ratio_binary(...)` effect-size helpers.
+  - `gap_inference(...)` orchestrator returning a `GapInference` bundle (CI + p-value + MDE) for one gap statistic.
+- `weighted_f1_gap` and `macro_f1_gap` now default to BCa and accept `--bootstrap-method {bca, percentile}`, `--bootstrap-iters`, `--permutation-iters`, `--alpha`, `--power` via the CLI and via the Python API. Their results carry `bootstrap_method`, `bootstrap_se`, `permutation_p_value`, `permutation_iters`, `minimum_detectable_effect`, `alpha`, and `power` fields, all surfaced in the JSON evidence pack.
+- 11 new tests: BCa vs percentile parity on the SE, permutation test recovers `p > 0.05` on a no-gap fixture and `p < 0.01` on a clear-gap fixture, MDE monotone-in-SE, BCa metadata round-trips through `FairnessResult.to_dict()`, Cohen's d and odds ratio known-value cases.
+- `scipy>=1.10` added to `dependencies` (used for `scipy.stats.norm` in BCa endpoint adjustment).
+- New `docs/statistical-methodology.md` covering BCa derivation, permutation-test caveats (conditioning, multiple comparisons), the MDE-not-observed-power justification (Hoenig & Heisey 2001), and the AI Act Art. 9 / Art. 15 mapping.
+
 ## v0.2.0a3 -- 2026-05-21 (foundation-model comparison mode — roadmap S3)
 
 - New CLI subcommand `fmm-fairness compare <csv1> <csv2> ... --labels uni,conch,plip,...` that ranks foundation-model candidates on a joint accuracy + fairness Pareto frontier and recommends one under an EU AI Act Art. 9 residual-risk heuristic.

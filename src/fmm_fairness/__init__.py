@@ -6,8 +6,15 @@ Public API entrypoints:
 - cli.main — argparse CLI entrypoint
 """
 
-__version__ = "0.2.0a3"
+__version__ = "0.2.0a4"
 
-from fmm_fairness import agreement, comparison, evidence, metrics
+from fmm_fairness import agreement, comparison, evidence, metrics, statistics
 
-__all__ = ["__version__", "agreement", "comparison", "evidence", "metrics"]
+__all__ = [
+    "__version__",
+    "agreement",
+    "comparison",
+    "evidence",
+    "metrics",
+    "statistics",
+]
