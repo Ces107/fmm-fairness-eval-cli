@@ -1,0 +1,34 @@
+{
+  "_source": "TFG César Pereiro 2026, ABMIL+UNI baseline. Confusion matrices extracted from published figures bcmHUCV.png (HUSC) and blue_confusion_matrix_HCUV.png (HCUV).",
+  "_classes": [
+    "leiomioma",
+    "leiomiosarcoma",
+    "dermatofibroma",
+    "dermatofibrosarcoma",
+    "melanoma_fusocelular",
+    "fibroxantoma_atipico"
+  ],
+  "_layout": "row=y_true, col=y_pred. Class order as in _classes.",
+  "HUSC": {
+    "n": 116,
+    "matrix": [
+      [24, 0, 1, 0, 1, 0],
+      [0, 8, 0, 0, 0, 0],
+      [0, 0, 33, 0, 0, 0],
+      [1, 0, 0, 17, 0, 0],
+      [1, 0, 0, 1, 8, 0],
+      [0, 3, 0, 1, 0, 17]
+    ]
+  },
+  "HCUV": {
+    "n": 41,
+    "matrix": [
+      [4, 0, 0, 0, 0, 0],
+      [3, 3, 0, 0, 0, 2],
+      [0, 0, 6, 0, 0, 0],
+      [1, 0, 2, 8, 0, 1],
+      [0, 1, 0, 0, 8, 0],
+      [0, 0, 0, 0, 0, 2]
+    ]
+  }
+}

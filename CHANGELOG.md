@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a5 -- 2026-05-24 (AI4SkIN golden replication example — roadmap S5)
+
+- New `examples/ai4skin-replication/` directory bundling a CLI-shape replication of the TFG inter-site fairness headline:
+  - `confusion_matrices.json` ships the published HUSC (n=116) and HCUV (n=41) ABMIL+UNI confusion matrices, extracted cell-by-cell from the thesis figures (`bcmHUCV.png`, `blue_confusion_matrix_HCUV.png`).
+  - `build_dataset.py` deterministically expands the matrices into a row-per-sample `predictions.csv` with `y_score_0..y_score_5` synthesised to peak at `y_pred`, plus a `raters.csv` of 10 synthetic raters whose disagreements follow the model's own confusion distribution (parameterised to land in the published-plausible AI-vs-pooled κ band 0.70-0.90).
+  - `replicate.ipynb` runs the CLI end-to-end, prints the headline numbers, and asserts the weighted F1 gap reproduces TFG Table 6 within ±0.005.
+  - `README.md` documents transparently that the thesis cites two distinct weighted F1 figures: the abstract value (0.241 gap, 0.690/0.931) and the per-cell confusion matrix value (0.166 gap, 0.757/0.922). This replication targets the second because it is the one a third party can audit against disclosed artefacts.
+- New `tests/test_ai4skin_replication.py` (5 tests) runs the same CLI invocation as the notebook and gates: predictions CSV has exactly 157 rows, weighted F1 gap is 0.1657 ± 0.005 with per-group values HUSC=0.9224 and HCUV=0.7567 (both ±0.005), permutation p < 0.05, MDE@80% power is finite and < 0.30, and AI-vs-pooled κ lands in [0.70, 0.90].
+- No source-code changes: this slice exercises the v0.2.0a4 API surface on a published-real fixture, closing the "does the CLI line up with the TFG?" question for v0.2 GA.
+
 ## v0.2.0a4 -- 2026-05-21 (statistical rigour — roadmap S4)
 
 - New module `fmm_fairness.statistics` providing the v0.2-roadmap inference layer:
