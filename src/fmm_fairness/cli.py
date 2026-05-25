@@ -115,9 +115,24 @@ def _add_evaluate(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     )
     ev.add_argument(
         "--manifest-mode",
-        choices=["ai-act"],
+        choices=["ai-act", "ai-act-full"],
         default=None,
-        help="Emit an additional regulatory mapping block. Currently supported: ai-act.",
+        help=(
+            "Emit an additional regulatory mapping block. 'ai-act' surfaces "
+            "the basic Art. 9/10/14/15 cross-mapping; 'ai-act-full' adds "
+            "Art. 13 transparency (driven by --model-card) and Art. 72 "
+            "post-market-monitoring schema references."
+        ),
+    )
+    ev.add_argument(
+        "--model-card",
+        default=None,
+        help=(
+            "Path to an EU AI Act Art. 13 model-card YAML or JSON. The CLI "
+            "parses the file and embeds it under ai_act_full.model_card in "
+            "the evidence pack. Required for a complete --manifest-mode "
+            "ai-act-full block; ignored otherwise."
+        ),
     )
     ev.add_argument(
         "--intersect",
@@ -342,6 +357,7 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         shrinkage_kappa=args.shrinkage_kappa,
         shrinkage_pivot=args.shrinkage_pivot,
         render_plots=args.render_plots,
+        model_card_path=args.model_card,
     )
     result = write_evidence_pack(df, cfg)
     print(f"OK: wrote evidence pack to {args.output}/")

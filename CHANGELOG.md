@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a7 -- 2026-05-25 (EU AI Act dossier completeness — roadmap S7)
+
+- New `--manifest-mode ai-act-full` extends the pre-S7 `ai-act` mapping with three more articles and a bundled template pack:
+  - **Art. 13 transparency** driven by an optional `--model-card path/to/model-card.yaml`. The CLI loads the model card (YAML or JSON) and embeds it under `ai_act_full.articles[Art. 13].model_card`. Without `--model-card`, the article is marked `model_card_present: false` so the gap is explicit to the auditor.
+  - **Art. 14 human oversight** consolidated with the S2 inter-rater agreement statistics (`ai_vs_pooled_raters_kappa` + Cohen / Fleiss / Krippendorff). The block now carries a `has_rater_evidence` boolean; without `--rater-cols`, the note explicitly tells the operator how to make Art. 14 numerically defensible.
+  - **Art. 72 post-market monitoring** template (CSV schema + procedure) for the operational evidence the Act requires. The block embeds the (overridable) drift thresholds — weighted-F1 gap (0.10), Brier (0.02), kappa drop (0.10), Hosmer-Lemeshow p floor (0.01) — used to decide when an incident report is required.
+- New module `fmm_fairness.ai_act_dossier`:
+  - `AiActFullConfig` dataclass — overridable model-card path, template-pack path, and drift thresholds.
+  - `load_model_card(path)` — loads YAML or JSON, returns a dict; raises `FileNotFoundError` on missing path and a clear `ValueError` on non-mapping top level.
+  - `build_ai_act_full_block(num_classes, has_raters, cfg, model_card)` — assembles the six-article block with cross-citations to the bundled templates.
+  - `find_bundled_template_path()` + `list_bundled_template_files()` — locate the template pack relative to the package, with a fallback for installed layouts.
+  - `TEMPLATE_PACK_VERSION = "1.0.0"` — surfaced in every evidence pack under `ai_act_full.template_pack.version`.
+- Bundled template pack at `templates/ai-act/`:
+  - `model-card.yaml` — Art. 13 transparency template (system identification, intended purpose, high-risk class justification, instructions for use, performance summary, limitations, residual risks, oversight summary, logging policy, cybersecurity references).
+  - `human-oversight.md` — Art. 14 procedure template with oversight modes (advisory / mandatory-second-read / autonomous-with-audit) and the disagreement-zone documentation checklist.
+  - `post-market-monitoring.csv` + `post-market-monitoring.md` — Art. 72 CSV schema (18 columns including `reviewer_id`, `decision_outcome`, `decision_modified_by_human`) and the collection-cadence + drift-detection procedure.
+  - `README.md` — index, versioning policy, extension guidance, and the explicit disclaimer that templates are not legal advice.
+- CLI: two new flags on `evaluate`:
+  - `--manifest-mode {ai-act, ai-act-full}` (the second choice is new).
+  - `--model-card PATH` (loaded only when `manifest-mode == ai-act-full`).
+- `EvaluationConfig` gains `model_card_path: str | None = None`. The dossier is opt-in; pre-S7 callers are unaffected.
+- 21 new tests across `tests/test_ai_act_dossier.py` (16) and `tests/test_cli_ai_act_full.py` (5):
+  - Template directory discovery and presence of all expected files.
+  - Post-market-monitoring CSV schema is valid and carries the documented columns plus at least one example row.
+  - Model card loads from YAML (with list-of-mapping `residual_risks`) and JSON; missing path raises `FileNotFoundError`; empty path returns `{}`.
+  - `ai_act_full` block always carries Art. 9 / 10 / 13 / 14 / 15 / 72, the template pack metadata, drift thresholds (with override), and the binary vs multi-class Art. 10 metrics list.
+  - CLI end-to-end: with `--model-card`, Art. 13 is populated; without, it is flagged incomplete; without `--rater-cols`, Art. 14 carries the "make-this-defensible" note; the basic `--manifest-mode ai-act` is unchanged (no `ai_act_full` leak).
+- `PyYAML>=6.0` added to runtime dependencies. The prior optional `[ai-act]` extra is removed; YAML is now a first-class dependency because the Art. 13 model card is the documentary anchor of the dossier.
+- New `docs/ai-act-dossier-mapping.md` covering CLI usage, the six articles, default drift thresholds, backward compatibility, template-pack versioning, and references (AI Act 2024/1689, ISO/IEC 42001:2023, Mitchell et al. 2019 model cards, Liang et al. 2022 post-market data).
+
 ## v0.2.0a6 -- 2026-05-25 (intersectional fairness + calibration depth — roadmap S6)
 
 - New module `fmm_fairness.intersect` adds intersectional cross-product fairness:

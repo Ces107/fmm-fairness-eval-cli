@@ -27,6 +27,11 @@ from fmm_fairness.agreement import (
     MISSING_VALUE_DEFAULT,
     build_inter_rater_evidence,
 )
+from fmm_fairness.ai_act_dossier import (
+    AiActFullConfig,
+    build_ai_act_full_block,
+    load_model_card,
+)
 from fmm_fairness.calibration import build_calibration_block
 from fmm_fairness.intersect import (
     build_intersectional_breakdown,
@@ -76,6 +81,7 @@ class EvaluationConfig:
     shrinkage_kappa: int = 0
     shrinkage_pivot: int = 50
     render_plots: bool = False
+    model_card_path: str | None = None  # path to a YAML/JSON Art. 13 model card
 
 
 def _sha256_text(text: str) -> str:
@@ -177,8 +183,19 @@ def build_evidence(df: pd.DataFrame, cfg: EvaluationConfig) -> dict[str, Any]:
         num_classes=K,
         min_group_n=cfg.min_group_n,
     )
-    if cfg.manifest_mode == "ai-act":
+    if cfg.manifest_mode in {"ai-act", "ai-act-full"}:
         evidence["regulatory_mapping"] = _ai_act_mapping(K)
+    if cfg.manifest_mode == "ai-act-full":
+        full_cfg = AiActFullConfig(model_card_path=cfg.model_card_path)
+        model_card = (
+            load_model_card(cfg.model_card_path) if cfg.model_card_path else {}
+        )
+        evidence["ai_act_full"] = build_ai_act_full_block(
+            num_classes=K,
+            has_raters=bool(cfg.rater_cols),
+            cfg=full_cfg,
+            model_card=model_card,
+        )
     return evidence
 
 
@@ -459,6 +476,43 @@ def render_markdown(evidence: dict[str, Any]) -> str:
             lines.append(f"  - **{art['article']} — {art['title']}**")
             lines.append(f"    - Metrics: {', '.join(art['mapped_metrics'])}")
             lines.append(f"    - Note: {art['note']}")
+        lines.append("")
+    if evidence.get("ai_act_full"):
+        full = evidence["ai_act_full"]
+        lines.append("## EU AI Act dossier (ai-act-full)")
+        tp = full["template_pack"]
+        lines.append(
+            f"- **Template pack**: v{tp['version']} at `{tp['relative_path']}`  "
+            f"(files: {', '.join(tp['files'])})"
+        )
+        for art in full["articles"]:
+            lines.append(f"### {art['article']} — {art['title']}")
+            if art.get("mapped_metrics"):
+                lines.append(
+                    f"- **Metrics**: {', '.join(art['mapped_metrics'])}"
+                )
+            if art.get("template"):
+                lines.append(f"- **Template**: `{art['template']}`")
+            if art.get("csv_schema_template"):
+                lines.append(
+                    f"- **CSV schema**: `{art['csv_schema_template']}`"
+                )
+                lines.append(
+                    f"- **Procedure**: `{art.get('procedure_template')}`"
+                )
+                lines.append(
+                    f"- **Drift thresholds**: {art['drift_thresholds']}"
+                )
+            if "model_card_present" in art:
+                lines.append(
+                    f"- **Model card present**: {art['model_card_present']}  "
+                    f"(path: `{art.get('model_card_path')}`)"
+                )
+            if "has_rater_evidence" in art:
+                lines.append(
+                    f"- **Rater evidence**: {art['has_rater_evidence']}"
+                )
+            lines.append(f"- **Note**: {art['note']}")
         lines.append("")
     lines.append("## Caveats (read before quoting these numbers)")
     lines.append("- Gap metrics depend on the operating threshold (or argmax decision) used to produce y_pred.")

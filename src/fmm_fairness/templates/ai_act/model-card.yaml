@@ -1,0 +1,72 @@
+# EU AI Act Art. 13 transparency model-card template.
+#
+# This file is a reference; fill in the values for your deployment and
+# pass it to the CLI via --model-card path/to/model-card.yaml. The CLI
+# embeds the parsed YAML under ai_act_full.model_card in the evidence pack.
+#
+# Field-by-field guidance lives in fmm_fairness/templates/ai_act/README.md.
+
+system_identification:
+  name: "<system-name>"            # e.g. "AI4SkIN dermatopathology multi-site classifier"
+  version: "<system-version>"      # e.g. "0.3.1"
+  provider: "<provider-name>"
+  contact: "<provider-contact-email>"
+  unique_id: "<UUID or registry ID>"
+
+intended_purpose:
+  task: "<task description>"       # e.g. "multi-class WSI tile classifier, 6 dermatopathology subtypes"
+  domain: "<clinical or operational domain>"
+  population: "<intended deployment population>"
+  out_of_scope: "<populations / use cases explicitly excluded>"
+
+high_risk_class:
+  annex_iii_category: "<e.g. point 5(a) safety component of medical device>"
+  risk_class_under_mdr: "<MDR class>"
+  justification: "<one paragraph>"
+
+instructions_for_use:
+  inputs: "<expected input shape>"
+  outputs: "<predicted outputs and their semantics>"
+  human_review_step: "<who reviews and when>"
+  failure_modes: "<documented failure modes and how the operator should respond>"
+
+performance_summary:
+  primary_metric: "weighted_f1_gap"
+  threshold_accept: 0.10           # operator's residual-risk threshold
+  reference_dataset: "<dataset name + version>"
+  reference_population: "<who is in the reference dataset>"
+  evidence_pack_path: "<relative path to JSON evidence>"
+
+limitations:
+  - "<known limitation 1>"
+  - "<known limitation 2>"
+
+residual_risks:
+  - id: "RR-1"
+    description: "<risk description>"
+    mitigation: "<mitigation in place>"
+    monitoring: "<post-market monitoring hook>"
+
+oversight_summary:
+  oversight_mode: "<advisory | mandatory-second-read | autonomous-with-audit>"
+  agreement_metric: "ai_vs_pooled_raters_kappa"
+  agreement_threshold: 0.60        # Landis-Koch "moderate"
+
+logging:
+  retention_days: 365
+  fields_logged:
+    - "input_hash"
+    - "prediction"
+    - "score_distribution"
+    - "site"
+    - "operator_id"
+  pii_minimisation: "<pseudonymisation or anonymisation scheme>"
+
+cybersecurity:
+  threat_model_ref: "<link to threat-model doc>"
+  controls: ["<control 1>", "<control 2>"]
+
+references:
+  - "EU Regulation 2024/1689 (AI Act)"
+  - "Regulation (EU) 2017/745 (MDR)"
+  - "ISO/IEC 42001:2023 (AI Management System)"
