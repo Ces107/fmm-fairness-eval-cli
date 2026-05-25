@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a6 -- 2026-05-25 (intersectional fairness + calibration depth — roadmap S6)
+
+- New module `fmm_fairness.intersect` adds intersectional cross-product fairness:
+  - `parse_intersect_spec(spec)` parses CLI strings such as `"site*sex,site*age_bucket"`.
+  - `add_intersection_columns(df, intersections)` synthesises cross-product columns named `_intersect_<axes>`.
+  - `intersectional_f1_gap(df, axes, ...)` returns an `IntersectionalResult` carrying per-cell weighted (default) or macro F1, the max-min gap, the cells excluded under `min_group_n`, and (when enabled) the cells whose values were Bayesian-shrunk toward the global F1.
+  - `build_intersectional_breakdown(df, intersections, ...)` is the evidence-pack orchestrator emitted under the `intersectional_breakdown` key when `--intersect` is non-empty.
+- New module `fmm_fairness.calibration` adds the SaMD calibration block:
+  - `brier_score(y_true, score_matrix, K)` and `per_class_brier(...)` implement the multi-class Brier (Brier 1950 / Murphy 1973). For K=2 the score reduces to the standard `mean((y - p)^2)` up to a constant.
+  - `hosmer_lemeshow(y_true, y_score, n_bins=10)` returns chi-square, degrees of freedom, p-value, and the per-bin `(n, observed, expected)` triples. Edge cases (constant y_true, degenerate bins, tail merging) are handled explicitly and surfaced under a `note` field rather than silently NaN'd.
+  - `reliability_bins(y_true, y_score, n_bins=10)` returns the bin centres, counts, mean predicted probability per bin, and observed positive rate per bin. Always present in JSON, plot or no plot.
+  - `per_group_calibration(df, attribute, ...)` and `build_calibration_block(df, attrs, ...)` orchestrate per-group, per-class Brier + reliability + Hosmer-Lemeshow. The calibration block is **always** emitted (purely additive; pre-S6 readers ignore unknown keys).
+- New module `fmm_fairness.plots` adds opt-in PNG rendering:
+  - `render_reliability_plots(df, attrs, output_dir, ...)` paints one reliability diagram per (attribute, group, class) and returns relative paths. Matplotlib is a lazy import (optional dependency `fmm-fairness-eval[plots]`); when missing the renderer warns and returns `[]` without affecting the JSON / Markdown / audit hash.
+- CLI: five new flags on `evaluate`:
+  - `--intersect "site*sex,site*age_bucket"` declares cross-products. Axes must already appear in `--protected-attrs`.
+  - `--min-group-n N` (default 20) surfaces the previously-internal small-cell guard.
+  - `--shrinkage-kappa K` (default 0; opt-in) enables empirical-Bayes shrinkage of sub-pivot cells toward the global F1 with weight `n / (n + kappa)`.
+  - `--shrinkage-pivot P` (default 50) sets the cell size at or above which no shrinkage is applied.
+  - `--render-plots` writes reliability PNGs to `<output>/plots/` when matplotlib is installed; is a no-op (warning + clean JSON) otherwise.
+- `EvaluationConfig` gains `intersect_spec`, `min_group_n`, `shrinkage_kappa`, `shrinkage_pivot`, `render_plots` fields, with defaults matching the v0.2.0a5 behaviour (pre-S6 callers are unaffected by upgrading).
+- `--manifest-mode ai-act` Art. 15 mapping extended with `brier_score`, `hosmer_lemeshow`, `permutation_p_value`, and `minimum_detectable_effect`, closing the most common Art. 15 audit finding (gap reported, calibration silent).
+- 33 new tests across `tests/test_intersect.py`, `tests/test_calibration.py`, and `tests/test_cli_intersect_calibration.py`: intersect-spec parsing, synthetic-column construction, intersectional disparity detection on a constructed (site, sex) DataFrame, small-cell exclusion, opt-in shrinkage, weighted vs macro metric, Brier on perfect / uniform / worst-case fixtures, Hosmer-Lemeshow well-calibrated / miscalibrated / empty, reliability-bin counts, per-group block shape, and CLI end-to-end for `--intersect` + calibration + `--render-plots` no-op.
+- New `docs/intersectional-fairness-and-calibration.md` covering CLI usage, small-cell semantics, the multi-class Brier and Hosmer-Lemeshow derivations, the AI Act Art. 15 mapping, and references (Brier 1950, Murphy 1973, Hosmer & Lemeshow 2000, Niculescu-Mizil & Caruana 2005, Crenshaw 1989, Efron & Morris 1973).
+- `[project.optional-dependencies] plots = ["matplotlib>=3.7"]` extra; install via `pip install fmm-fairness-eval[plots]`.
+
 ## v0.2.0a5 -- 2026-05-24 (AI4SkIN golden replication example — roadmap S5)
 
 - New `examples/ai4skin-replication/` directory bundling a CLI-shape replication of the TFG inter-site fairness headline:

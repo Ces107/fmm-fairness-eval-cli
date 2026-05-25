@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,13 @@ from fmm_fairness.agreement import (
     MISSING_VALUE_DEFAULT,
     build_inter_rater_evidence,
 )
+from fmm_fairness.calibration import build_calibration_block
+from fmm_fairness.intersect import (
+    build_intersectional_breakdown,
+    parse_intersect_spec,
+)
 from fmm_fairness.metrics import (
+    MIN_GROUP_N_DEFAULT,
     calibration_gap,
     demographic_parity_gap,
     detect_num_classes,
@@ -38,6 +45,7 @@ from fmm_fairness.metrics import (
     samd_fairness_score,
     weighted_f1_gap,
 )
+from fmm_fairness.plots import render_reliability_plots
 
 REPORT_FILENAME = "fairness-report.md"
 EVIDENCE_FILENAME = "fairness-evidence.json"
@@ -63,6 +71,11 @@ class EvaluationConfig:
     permutation_iters: int = 0         # 0 disables; >0 emits p-value + null dist
     alpha: float = 0.05
     power: float = 0.80
+    intersect_spec: str | None = None  # e.g. "site*sex,site*age_bucket"
+    min_group_n: int = MIN_GROUP_N_DEFAULT
+    shrinkage_kappa: int = 0
+    shrinkage_pivot: int = 50
+    render_plots: bool = False
 
 
 def _sha256_text(text: str) -> str:
@@ -148,6 +161,22 @@ def build_evidence(df: pd.DataFrame, cfg: EvaluationConfig) -> dict[str, Any]:
             missing_value=cfg.rater_missing_value,
             stratify_by=stratify,
         )
+    intersections = parse_intersect_spec(cfg.intersect_spec)
+    if intersections:
+        evidence["intersectional_breakdown"] = build_intersectional_breakdown(
+            df,
+            intersections,
+            num_classes=K,
+            min_group_n=cfg.min_group_n,
+            shrinkage_kappa=cfg.shrinkage_kappa,
+            shrinkage_pivot=cfg.shrinkage_pivot,
+        )
+    evidence["calibration"] = build_calibration_block(
+        df,
+        cfg.protected_attrs,
+        num_classes=K,
+        min_group_n=cfg.min_group_n,
+    )
     if cfg.manifest_mode == "ai-act":
         evidence["regulatory_mapping"] = _ai_act_mapping(K)
     return evidence
@@ -210,10 +239,21 @@ def _ai_act_mapping(num_classes: int) -> dict[str, Any]:
             {
                 "article": "Art. 15",
                 "title": "Accuracy, robustness, cybersecurity",
-                "mapped_metrics": ["inter_site_auc_variance", "multi_class_auc_gap"],
+                "mapped_metrics": [
+                    "inter_site_auc_variance",
+                    "multi_class_auc_gap",
+                    "brier_score",
+                    "hosmer_lemeshow",
+                    "permutation_p_value",
+                    "minimum_detectable_effect",
+                ],
                 "note": (
-                    "Site-level AUC variance + OVR-macro AUC gap evidence performance "
-                    "generalisation claims under K-class deployments."
+                    "Site-level AUC variance + OVR-macro AUC gap evidence "
+                    "discrimination generalisation under K-class deployments. "
+                    "Brier score and per-class Hosmer-Lemeshow goodness-of-fit "
+                    "evidence probability-calibration robustness. Permutation "
+                    "p-value + MDE bound the statistical-significance and "
+                    "power of any observed inter-site gap."
                 ),
             },
         ],
@@ -336,6 +376,81 @@ def render_markdown(evidence: dict[str, Any]) -> str:
                 f"- **Per-{block['stratified_by']} kappa matrix** present in JSON evidence."
             )
         lines.append("")
+    if evidence.get("intersectional_breakdown"):
+        ib = evidence["intersectional_breakdown"]
+        lines.append("## Intersectional breakdown")
+        lines.append(
+            f"- **Intersections evaluated**: "
+            f"{', '.join('*'.join(a) for a in ib['intersections_declared'])}"
+        )
+        lines.append(
+            f"- **Min cell size**: {ib['min_group_n']}  "
+            f"**Shrinkage kappa**: {ib['shrinkage_kappa']}  "
+            f"**Shrinkage pivot**: {ib['shrinkage_pivot']}"
+        )
+        for result in ib["results"]:
+            label = "*".join(result["axes"])
+            lines.append(f"### intersection `{label}`")
+            for metric_key, metric_label in (
+                ("weighted_f1_gap", "Intersectional weighted F1 gap"),
+                ("macro_f1_gap", "Intersectional macro F1 gap"),
+            ):
+                m = result[metric_key]
+                lines.append(f"- **{metric_label}**: {m['gap']:.4f}")
+                for cell in m["per_cell"]:
+                    lines.append(
+                        f"  - `{cell['group']}` (n={cell['n']}): {cell['value']:.4f}"
+                    )
+                if m["excluded_cells"]:
+                    lines.append(
+                        f"  - Excluded (n<{ib['min_group_n']}): {m['excluded_cells']}"
+                    )
+                if m["shrunk_cells"]:
+                    lines.append(
+                        f"  - Shrunk toward global (kappa={m['shrinkage_kappa']}): "
+                        f"{m['shrunk_cells']}"
+                    )
+        lines.append("")
+    if evidence.get("calibration"):
+        cb = evidence["calibration"]
+        lines.append("## Calibration")
+        lines.append(
+            f"- **Global Brier score**: {cb['global_brier_score']:.4f}  "
+            f"(0 = perfectly calibrated; lower is better)"
+        )
+        per_class_pretty = ", ".join(
+            f"c{i}={v:.4f}" for i, v in enumerate(cb["global_per_class_brier"])
+        )
+        lines.append(f"- **Per-class Brier**: {per_class_pretty}")
+        for attr, attr_block in cb["per_attribute"].items():
+            lines.append(
+                f"### `{attr}` calibration (Brier gap: {attr_block['brier_gap']:.4f})"
+            )
+            for grp in attr_block["per_group"]:
+                lines.append(
+                    f"- `{grp['group']}` (n={grp['n']}): Brier={grp['brier_score']:.4f}"
+                )
+                # Surface a one-line summary of the per-class Hosmer-Lemeshow,
+                # to keep the markdown report scannable; the full bins live in JSON.
+                hl_lines: list[str] = []
+                for hl in grp["hosmer_lemeshow_by_class"]:
+                    p = hl.get("p_value")
+                    if p is None or (isinstance(p, float) and math.isnan(p)):
+                        hl_lines.append(f"c{hl['class_index']}: HL undefined")
+                    else:
+                        hl_lines.append(f"c{hl['class_index']}: HL p={p:.3f}")
+                if hl_lines:
+                    lines.append(f"  - {', '.join(hl_lines)}")
+            if attr_block["excluded_groups"]:
+                lines.append(
+                    f"- Excluded (n<{cb['min_group_n']}): {attr_block['excluded_groups']}"
+                )
+        lines.append("")
+    if evidence.get("rendered_plots"):
+        lines.append("## Reliability plots")
+        for plot_path in evidence["rendered_plots"]:
+            lines.append(f"- `{plot_path}`")
+        lines.append("")
     if evidence.get("regulatory_mapping"):
         lines.append("## Regulatory mapping")
         mapping = evidence["regulatory_mapping"]
@@ -363,6 +478,16 @@ def write_evidence_pack(
     out.mkdir(parents=True, exist_ok=True)
 
     evidence = build_evidence(df, cfg)
+    if cfg.render_plots:
+        rendered = render_reliability_plots(
+            df,
+            cfg.protected_attrs,
+            out / "plots",
+            num_classes=evidence["num_classes"],
+            min_group_n=cfg.min_group_n,
+        )
+        if rendered:
+            evidence["rendered_plots"] = [str(Path(p).as_posix()) for p in rendered]
     json_text = json.dumps(evidence, indent=2, sort_keys=True)
     md_text = render_markdown(evidence)
 

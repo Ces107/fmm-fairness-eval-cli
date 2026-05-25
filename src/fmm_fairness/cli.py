@@ -119,6 +119,54 @@ def _add_evaluate(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         default=None,
         help="Emit an additional regulatory mapping block. Currently supported: ai-act.",
     )
+    ev.add_argument(
+        "--intersect",
+        default=None,
+        help=(
+            "Comma-separated intersectional cross-products (e.g. "
+            "'site*sex,site*age_bucket'). Each cross-product is evaluated as a "
+            "synthetic attribute and emitted in the intersectional_breakdown "
+            "block. Axes must already be declared via --protected-attrs."
+        ),
+    )
+    ev.add_argument(
+        "--min-group-n",
+        type=int,
+        default=20,
+        help=(
+            "Minimum cell size below which a group (or intersection cell) is "
+            "excluded from the fairness gap (default: 20)."
+        ),
+    )
+    ev.add_argument(
+        "--shrinkage-kappa",
+        type=int,
+        default=0,
+        help=(
+            "Bayesian shrinkage kappa for intersection cells with "
+            "min_group_n <= n < shrinkage-pivot. Pulls per-cell F1 toward the "
+            "global F1 with weight n/(n+kappa). Default: 0 (no shrinkage)."
+        ),
+    )
+    ev.add_argument(
+        "--shrinkage-pivot",
+        type=int,
+        default=50,
+        help=(
+            "Cell size at or above which no shrinkage is applied "
+            "(default: 50). Only meaningful when --shrinkage-kappa > 0."
+        ),
+    )
+    ev.add_argument(
+        "--render-plots",
+        action="store_true",
+        help=(
+            "Render reliability-diagram PNGs per group. Requires matplotlib "
+            "(install the [plots] optional dependency). If matplotlib is not "
+            "available, plot rendering is skipped with a warning; numeric "
+            "calibration data is always written to the JSON evidence pack."
+        ),
+    )
 
 
 def _add_compare(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -289,6 +337,11 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         permutation_iters=args.permutation_iters,
         alpha=args.alpha,
         power=args.power,
+        intersect_spec=args.intersect,
+        min_group_n=args.min_group_n,
+        shrinkage_kappa=args.shrinkage_kappa,
+        shrinkage_pivot=args.shrinkage_pivot,
+        render_plots=args.render_plots,
     )
     result = write_evidence_pack(df, cfg)
     print(f"OK: wrote evidence pack to {args.output}/")
