@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a10 -- 2026-05-27 (edge-case correctness: TD-001 + TD-004)
+
+Two HIGH severity edge-case bugs from the 2026-05-25 sweep landed.
+
+- `intersect.add_intersection_columns` was joining axis values via `astype(str)`, so a column re-inferred as float between rows (`age=65` on one row, `age=65.0` on another) silently produced two distinct cells for the same conceptual subgroup. A new `_canonical_str` helper canonicalises ints, integer-valued floats, fractional floats, NaN, booleans and strings into a deterministic representation, then the intersection joins those instead. Mixed-dtype fixture now collapses to the expected number of cells (TD-001).
+- `calibration.hosmer_lemeshow` only merged a too-small bin into its predecessor. A too-small first bin had no predecessor and stayed as-is, hidden later by the `denom <= 0` guard which silently dropped it from the chi-square sum. The fix carries a too-small head bin forward and merges it into the next non-tiny bin instead. A trailing fall-back also folds a still-pending head into the last bin if every subsequent bin was absorbed (TD-004).
+
+Tests: full suite still 141 passing (no test count change). Ruff clean, mypy strict clean.
+
+Pre-PyPI HIGH remaining: TD-002 only (intersectional metric CI + p-value).
+
 ## v0.2.0a9 -- 2026-05-27 (pre-PyPI hardening: TD-013 + TD-024)
 
 Two of the three remaining pre-PyPI hard items from the 2026-05-25 adversarial sweep landed.

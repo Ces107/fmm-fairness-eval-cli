@@ -24,6 +24,7 @@ Small-cell handling
 """
 from __future__ import annotations
 
+import math
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
@@ -101,12 +102,48 @@ def _synthetic_attribute_name(axes: list[str]) -> str:
     return INTERSECT_COL_PREFIX + INTERSECT_SEP.join(axes)
 
 
+def _canonical_str(value: Any) -> str:
+    """Canonicalize an axis value to a string so equivalent numeric forms collapse.
+
+    Without this, a CSV with mixed dtype across rows (``age_bucket=65`` as int
+    on one row and ``65.0`` as float on another, e.g. after pandas re-infers a
+    column with one NaN) silently produces two distinct cells for the same
+    conceptual subgroup (TD-001).
+
+    Convention:
+    - NaN / pd.NA → ``"NA"``
+    - integer (Python or numpy) → ``str(int(value))``
+    - float that is integer-valued → ``str(int(value))``   (65.0 → "65")
+    - float with fractional part   → ``repr(value)``       (65.5 → "65.5")
+    - everything else              → ``str(value)``
+    """
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return "NA"
+    try:
+        if pd.isna(value):
+            return "NA"
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (bool, np.bool_)):
+        return str(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    if isinstance(value, (float, np.floating)):
+        v = float(value)
+        if v.is_integer():
+            return str(int(v))
+        return repr(v)
+    return str(value)
+
+
 def add_intersection_columns(
     df: pd.DataFrame, intersections: list[list[str]]
 ) -> tuple[pd.DataFrame, list[str]]:
     """Add one synthetic column per intersection. Return (new df, synthetic-col names).
 
     The new column joins the per-axis string representations with ``INTERSECT_SEP``.
+    Per-axis values are canonicalised via ``_canonical_str`` so that numerically
+    equivalent values (e.g. ``65`` and ``65.0``) collapse to the same cell name.
     Missing axis cells are tolerated (NaN-bearing rows are stamped as ``"NA"``
     on that axis); the caller's small-cell guard then prunes them naturally.
     """
@@ -122,9 +159,11 @@ def add_intersection_columns(
                 f"declare them with --protected-attrs or fix the CSV."
             )
         syn = _synthetic_attribute_name(axes)
-        df[syn] = (
-            df[axes].astype(object).fillna("NA").astype(str).agg(INTERSECT_SEP.join, axis=1)
+        canonical_axes = pd.DataFrame(
+            {a: df[a].map(_canonical_str) for a in axes},
+            index=df.index,
         )
+        df[syn] = canonical_axes.agg(INTERSECT_SEP.join, axis=1)
         new_cols.append(syn)
     return df, new_cols
 

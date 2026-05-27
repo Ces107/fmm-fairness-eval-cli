@@ -147,14 +147,36 @@ def hosmer_lemeshow(
         observed = int(y_true_sorted[idxs].sum())
         expected = float(y_score_sorted[idxs].sum())
         bins.append((n_g, observed, expected))
-    # Merge any tail bin with n < 2 into its predecessor; preserves chi-square.
+    # Merge any too-small bin into its neighbour. Earlier versions only merged
+    # backward (into the predecessor), which silently skipped a too-small FIRST
+    # bin because there was no predecessor to merge into (TD-004). Now a small
+    # first bin is "pending" and merges forward into the next bin instead.
     cleaned: list[tuple[int, int, float]] = []
+    pending: tuple[int, int, float] | None = None
     for bin_ in bins:
+        if pending is not None:
+            bin_ = (
+                pending[0] + bin_[0],
+                pending[1] + bin_[1],
+                pending[2] + bin_[2],
+            )
+            pending = None
         if cleaned and bin_[0] < 2:
             prev = cleaned[-1]
             cleaned[-1] = (prev[0] + bin_[0], prev[1] + bin_[1], prev[2] + bin_[2])
+        elif not cleaned and bin_[0] < 2:
+            pending = bin_  # defer to next bin (forward-merge)
         else:
             cleaned.append(bin_)
+    if pending is not None and cleaned:
+        # Every subsequent bin was already absorbed; fold the pending head
+        # into the now-last bin so its mass is not lost.
+        prev = cleaned[-1]
+        cleaned[-1] = (
+            prev[0] + pending[0],
+            prev[1] + pending[1],
+            prev[2] + pending[2],
+        )
     chi2_sum = 0.0
     valid_bins = 0
     for n_g, o, e in cleaned:
