@@ -63,14 +63,29 @@ class AiActFullConfig:
 
 
 def _load_yaml_or_json(path: Path) -> dict[str, Any]:
-    """Load a YAML or JSON file as a dict at the top level."""
+    """Load a YAML or JSON file as a dict at the top level.
+
+    Dispatch by content sniff first (TD-010): files like ``cfg.yaml`` that
+    happen to contain pure JSON parse through the JSON loader (faster, stricter
+    errors). Files like ``cfg`` (no suffix) are inspected the same way. Suffix
+    is used only as a tiebreaker when the sniff is ambiguous.
+    """
     text = path.read_text(encoding="utf-8")
+    stripped = text.lstrip()
+    looks_like_json = stripped.startswith("{")
     suffix = path.suffix.lower()
-    if suffix == ".json":
-        loaded = json.loads(text)
-        if not isinstance(loaded, dict):
-            raise ValueError(f"{path}: expected a JSON object at the top level.")
-        return loaded
+    if looks_like_json or suffix == ".json":
+        try:
+            loaded = json.loads(text)
+        except json.JSONDecodeError:
+            if suffix in {".yaml", ".yml"}:
+                loaded = None  # fall through to YAML branch below
+            else:
+                raise
+        else:
+            if not isinstance(loaded, dict):
+                raise ValueError(f"{path}: expected a JSON object at the top level.")
+            return loaded
     import yaml
 
     loaded_yaml = yaml.safe_load(text)

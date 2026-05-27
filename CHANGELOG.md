@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a8 -- 2026-05-27 (sweep-1 hardening patch)
+
+Three tech-debt items from the 2026-05-25 adversarial sweep landed as code fixes. No behaviour change in the happy path; the failure modes below now produce clear errors or correct fallbacks instead of cryptic exceptions or silent state mutation.
+
+- `calibration.brier_score` and `calibration.per_class_brier` now raise `ValueError` with explicit `min`/`max` info when `y_true` carries a label outside `[0, num_classes)`. Previously the public Python API raised a NumPy `IndexError` when the CLI validation layer was bypassed (TD-003). Tests on the calibration module remain 15/15 green.
+- `plots._try_import_matplotlib` no longer force-switches the caller's matplotlib backend. A Jupyter / IPython kernel running the `inline` backend keeps it; only a fresh process with the default `agg` backend (or none yet selected) gets the headless `Agg` switch. Previously a single import of fmm-fairness inside a notebook silently killed in-notebook plot rendering until kernel restart (TD-006).
+- `ai_act_dossier._load_yaml_or_json` dispatches by content sniff first (text starting with `{` parses as JSON), suffix is now a tiebreaker. JSON files saved as `cfg.yaml` parse via the strict JSON path; JSON content in extension-less files no longer accidentally rides PyYAML (TD-010).
+
+Tests: 140 passing (no test count change vs v0.2.0a7). Ruff clean, mypy strict clean across 12 source files.
+
 ## v0.2.0a7 -- 2026-05-25 (EU AI Act dossier completeness — roadmap S7)
 
 - New `--manifest-mode ai-act-full` extends the pre-S7 `ai-act` mapping with three more articles and a bundled template pack:

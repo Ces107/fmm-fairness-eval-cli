@@ -47,6 +47,25 @@ HL_DEFAULT_BINS = 10
 RELIABILITY_DEFAULT_BINS = 10
 
 
+def _validate_y_true_range(y_true: np.ndarray, num_classes: int) -> None:
+    """Public-API guard: y_true integer labels must lie in [0, num_classes).
+
+    Without this guard, the one-hot construction
+    ``onehot[arange(n), y_true.astype(int)] = 1`` raises ``IndexError`` with
+    a NumPy-internal message (TD-003). Surface a clear ``ValueError`` instead.
+    """
+    if len(y_true) == 0:
+        return
+    y_int = y_true.astype(int)
+    bad_high = int((y_int >= num_classes).sum())
+    bad_low = int((y_int < 0).sum())
+    if bad_high or bad_low:
+        raise ValueError(
+            f"y_true contains {bad_high + bad_low} labels outside "
+            f"[0, {num_classes}); got min={int(y_int.min())} max={int(y_int.max())}."
+        )
+
+
 def brier_score(
     y_true: np.ndarray, score_matrix: np.ndarray, num_classes: int
 ) -> float:
@@ -61,6 +80,7 @@ def brier_score(
         raise ValueError(
             f"score_matrix has {score_matrix.shape[1]} columns; expected {num_classes}."
         )
+    _validate_y_true_range(y_true, num_classes)
     onehot = np.zeros_like(score_matrix, dtype=float)
     onehot[np.arange(len(y_true)), y_true.astype(int)] = 1.0
     return float(((onehot - score_matrix) ** 2).sum(axis=1).mean())
@@ -76,6 +96,7 @@ def per_class_brier(
         raise ValueError(
             f"score_matrix has {score_matrix.shape[1]} columns; expected {num_classes}."
         )
+    _validate_y_true_range(y_true, num_classes)
     onehot = np.zeros_like(score_matrix, dtype=float)
     onehot[np.arange(len(y_true)), y_true.astype(int)] = 1.0
     return np.asarray(((onehot - score_matrix) ** 2).mean(axis=0), dtype=float)

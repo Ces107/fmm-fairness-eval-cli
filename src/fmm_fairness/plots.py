@@ -27,11 +27,21 @@ from fmm_fairness.metrics import (
 
 
 def _try_import_matplotlib() -> Any:
-    """Lazy import so the package never hard-fails on systems without matplotlib."""
+    """Lazy import so the package never hard-fails on systems without matplotlib.
+
+    Avoid clobbering a caller's existing backend (TD-006). Only force the
+    headless ``Agg`` backend when matplotlib has not yet selected one of its
+    own. A notebook session that previously imported matplotlib with the
+    ``inline`` backend keeps it; a fresh process gets ``Agg``.
+    """
     try:
         import matplotlib
 
-        matplotlib.use("Agg", force=True)  # headless backend
+        current = matplotlib.get_backend()
+        # Matplotlib's default before any explicit `use()` call is ``agg``;
+        # any GUI / inline backend will be a non-default string.
+        if current.lower() in {"", "agg"}:
+            matplotlib.use("Agg", force=False)
         import matplotlib.pyplot as plt
 
         return plt
