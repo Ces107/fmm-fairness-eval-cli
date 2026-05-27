@@ -42,4 +42,4 @@ Stripe recurring monthly subscription for Hosted CI. One-time invoices (Wise / S
 
 Consulting is invoiced as one-time engagements via Calendly booking, billed in 30-minute increments, EUR 60-100/hour depending on scope.
 
-Planned Stripe SKU: `fmm-fairness-ci`. Stripe Payment Link: wiring scheduled 2026-05-21.
+Planned Stripe SKU: `fmm-fairness-ci`. Until the Stripe live keys are wired, early-access and consulting are invoiced manually (SEPA bank transfer or Wise); email to arrange.

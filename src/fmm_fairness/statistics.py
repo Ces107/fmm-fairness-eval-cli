@@ -181,6 +181,30 @@ def _bca_endpoints(
     return z0, a, alpha1, alpha2
 
 
+def _coerce_bracket(
+    theta_hat: float, ci_low: float, ci_high: float
+) -> tuple[float, float]:
+    """Widen a bootstrap CI so it contains the point estimate.
+
+    The max-min gap statistic is *positively biased*: under resampling, the
+    group maximum drifts up and the minimum drifts down, so for a true gap
+    near its 0 boundary the bootstrap distribution sits above ``theta_hat``
+    and the BCa (or percentile) interval can EXCLUDE the point estimate
+    (e.g. theta_hat=0.0073 with CI [0.0124, 0.1259]). An interval that does
+    not contain its own estimator is not interpretable as a confidence
+    interval for that estimator.
+
+    We resolve this by widening the interval to include ``theta_hat``. This
+    is strictly conservative — it never narrows the interval, so coverage is
+    not reduced. The bootstrap SE and the permutation p-value continue to
+    carry the real uncertainty signal (a gap that triggers this coercion is
+    typically not distinguishable from zero, which the permutation p-value
+    will reflect). This keeps reported intervals coherent without hiding the
+    near-zero, high-bias regime.
+    """
+    return min(ci_low, theta_hat), max(ci_high, theta_hat)
+
+
 def bca_bootstrap_gap_ci(
     df: pd.DataFrame,
     attribute: str,
@@ -200,6 +224,7 @@ def bca_bootstrap_gap_ci(
     _, _, alpha1, alpha2 = _bca_endpoints(theta_hat, theta_boot, theta_jack, alpha)
     ci_low = float(np.quantile(theta_boot, alpha1))
     ci_high = float(np.quantile(theta_boot, alpha2))
+    ci_low, ci_high = _coerce_bracket(theta_hat, ci_low, ci_high)
     se = float(np.std(theta_boot, ddof=1))
     return ci_low, ci_high, se, theta_boot
 
@@ -214,9 +239,11 @@ def percentile_bootstrap_gap_ci(
     seed: int = 42,
 ) -> tuple[float, float, float, np.ndarray]:
     """Plain percentile bootstrap CI; preserved for backward compatibility."""
+    theta_hat = _gap_statistic(df, attribute, per_group_fn)
     theta_boot = _bootstrap_replicates(df, attribute, per_group_fn, n_iters, seed)
     ci_low = float(np.quantile(theta_boot, alpha / 2))
     ci_high = float(np.quantile(theta_boot, 1.0 - alpha / 2))
+    ci_low, ci_high = _coerce_bracket(theta_hat, ci_low, ci_high)
     se = float(np.std(theta_boot, ddof=1))
     return ci_low, ci_high, se, theta_boot
 

@@ -85,6 +85,35 @@ class TestPercentileVsBca(unittest.TestCase):
             self.assertLess(hi, 0.95)
         self.assertAlmostEqual(se_p, se_b, places=2)
 
+    def test_ci_contains_point_estimate_near_zero_gap(self) -> None:
+        """Near-zero gaps must not yield an interval that excludes theta_hat.
+
+        The max-min gap is positively biased, so a tiny true gap can push
+        the bootstrap interval above the point estimate. _coerce_bracket
+        widens the interval to remain coherent. Here we assert the reported
+        interval brackets the observed gap for both methods.
+        """
+        from fmm_fairness.statistics import _gap_statistic
+
+        df = _make_no_gap_df()
+        fn = _f1_fn(2)
+        theta_hat = _gap_statistic(df, "site", fn)
+        lo_p, hi_p, _, _ = percentile_bootstrap_gap_ci(df, "site", fn, n_iters=300)
+        lo_b, hi_b, _, _ = bca_bootstrap_gap_ci(df, "site", fn, n_iters=300)
+        for lo, hi in ((lo_p, hi_p), (lo_b, hi_b)):
+            self.assertLessEqual(lo, theta_hat)
+            self.assertGreaterEqual(hi, theta_hat)
+
+    def test_coerce_bracket_widens_only(self) -> None:
+        from fmm_fairness.statistics import _coerce_bracket
+
+        # point below CI low -> low pulled down to theta_hat
+        self.assertEqual(_coerce_bracket(0.0073, 0.0124, 0.1259), (0.0073, 0.1259))
+        # point above CI high -> high pushed up
+        self.assertEqual(_coerce_bracket(0.9, 0.1, 0.5), (0.1, 0.9))
+        # already coherent -> unchanged
+        self.assertEqual(_coerce_bracket(0.3, 0.2, 0.4), (0.2, 0.4))
+
 
 class TestPermutationTest(unittest.TestCase):
     def test_no_gap_returns_large_p(self) -> None:

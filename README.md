@@ -39,15 +39,23 @@ Citation for the underlying TFG work: César Pereiro, _Foundation-model-based fa
 
 ## Install
 
+The current feature set (BCa bootstrap, permutation tests, intersectional
+analysis, multi-class, AI Act full dossier) is in the `0.2.0a` pre-release
+line. Install it with `--pre`:
+
 ```bash
-pip install fmm-fairness-eval
+pip install --pre fmm-fairness-eval
 ```
+
+A bare `pip install fmm-fairness-eval` (without `--pre`) currently resolves
+to the older `0.1.0` stable, which lacks most of the capability documented
+below. Use `--pre` until `0.2.0` is promoted to stable.
 
 Or from source:
 
 ```bash
-git clone https://github.com/<handle>/fmm-fairness-eval
-cd fmm-fairness-eval
+git clone https://github.com/Ces107/fmm-fairness-eval-cli
+cd fmm-fairness-eval-cli
 pip install -e .
 ```
 
@@ -183,9 +191,8 @@ If you use this tool in published research:
   author       = {Pereiro, C{\'e}sar},
   title        = {{fmm-fairness-eval}: SaMD-specific fairness evaluation for foundation-model medical AI},
   year         = {2026},
-  publisher    = {Zenodo},
-  doi          = {<assigned-on-first-release>},
-  url          = {https://github.com/<handle>/fmm-fairness-eval}
+  url          = {https://github.com/Ces107/fmm-fairness-eval-cli},
+  note         = {Zenodo DOI to be minted on the first stable (0.2.0) release}
 }
 
 @thesis{pereiro2024dermfairness,

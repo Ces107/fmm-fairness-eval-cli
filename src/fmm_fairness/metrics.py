@@ -58,6 +58,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score, roc_auc_score
 
+from fmm_fairness.statistics import _coerce_bracket
+
 MIN_GROUP_N_DEFAULT = 20
 BOOTSTRAP_ITERS_DEFAULT = 1000
 RNG_SEED_DEFAULT = 42
@@ -262,11 +264,25 @@ def _bootstrap_gap(
     n_iters: int,
     seed: int,
 ) -> tuple[float, float]:
-    """Percentile bootstrap CI of the max-min gap of ``per_group_fn`` over groups."""
+    """Percentile bootstrap CI of the max-min gap of ``per_group_fn`` over groups.
+
+    The CI is bracket-coerced to contain the observed (non-bootstrap) gap:
+    the max-min statistic is positively biased, so a near-zero true gap can
+    yield a percentile interval that sits entirely above the point estimate.
+    See :func:`fmm_fairness.statistics._coerce_bracket`.
+    """
     rng = np.random.default_rng(seed)
     gaps: list[float] = []
     groups = df[attribute].unique()
     indices_by_group = {g: df.index[df[attribute] == g].to_numpy() for g in groups}
+
+    # Observed (non-bootstrap) gap = the point estimate the report shows.
+    obs_vals = [
+        per_group_fn(df.loc[indices_by_group[g]]) for g in groups
+    ]
+    obs_arr = np.array([v for v in obs_vals if not np.isnan(v)])
+    theta_hat = float(obs_arr.max() - obs_arr.min()) if len(obs_arr) >= 2 else float("nan")
+
     for _ in range(n_iters):
         vals = []
         for g in groups:
@@ -280,7 +296,10 @@ def _bootstrap_gap(
         gaps.append(float(vals_arr.max() - vals_arr.min()))
     if not gaps:
         return float("nan"), float("nan")
-    return float(np.percentile(gaps, 2.5)), float(np.percentile(gaps, 97.5))
+    lo, hi = float(np.percentile(gaps, 2.5)), float(np.percentile(gaps, 97.5))
+    if not np.isnan(theta_hat):
+        lo, hi = _coerce_bracket(theta_hat, lo, hi)
+    return lo, hi
 
 
 def _bootstrap_per_class_worst_gap(
@@ -290,11 +309,31 @@ def _bootstrap_per_class_worst_gap(
     n_iters: int,
     seed: int,
 ) -> tuple[float, float]:
-    """Percentile bootstrap CI on the worst-per-class F1 gap across groups."""
+    """Percentile bootstrap CI on the worst-per-class F1 gap across groups.
+
+    Bracket-coerced to contain the observed worst-class gap (same positive-
+    bias rationale as :func:`_bootstrap_gap`).
+    """
     rng = np.random.default_rng(seed)
     worst: list[float] = []
     groups = df[attribute].unique()
     indices_by_group = {g: df.index[df[attribute] == g].to_numpy() for g in groups}
+
+    # Observed (non-bootstrap) worst-class gap = the point estimate.
+    obs_vecs = [
+        _per_class_f1(
+            df.loc[indices_by_group[g], "y_true"].to_numpy(),
+            df.loc[indices_by_group[g], "y_pred"].to_numpy(),
+            num_classes,
+        )
+        for g in groups
+    ]
+    if len(obs_vecs) >= 2:
+        obs_stack = np.stack(obs_vecs, axis=0)
+        theta_hat = float((obs_stack.max(axis=0) - obs_stack.min(axis=0)).max())
+    else:
+        theta_hat = float("nan")
+
     for _ in range(n_iters):
         per_group_vecs: list[np.ndarray] = []
         for g in groups:
@@ -315,7 +354,10 @@ def _bootstrap_per_class_worst_gap(
         worst.append(float(per_class_gap.max()))
     if not worst:
         return float("nan"), float("nan")
-    return float(np.percentile(worst, 2.5)), float(np.percentile(worst, 97.5))
+    lo, hi = float(np.percentile(worst, 2.5)), float(np.percentile(worst, 97.5))
+    if not np.isnan(theta_hat):
+        lo, hi = _coerce_bracket(theta_hat, lo, hi)
+    return lo, hi
 
 
 # ---------------------------------------------------------------------------
