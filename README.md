@@ -8,7 +8,7 @@
 - **Hosted CI (€99/mo)**. Hosted runner on customer prediction CSVs, monthly evidence pack.
 - **Consulting (€60-100/hour)**. Fairness-evidence drafting, AI Act Art. 9 / Art. 10 dossier review, Calendly booking.
 
-[Stripe Payment Link (wiring 2026-05-21)]. See `pricing.md` for tier details.
+Paid tiers open early-access via email; the CLI itself is free under MIT and `pip install --pre fmm-fairness-eval` works today. See `pricing.md` for tier details and how to request early access.
 
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
