@@ -1,0 +1,14 @@
+include README.md
+include CHANGELOG.md
+include LICENSE
+include pyproject.toml
+recursive-include src/fmm_fairness/templates *
+recursive-include docs *.md
+prune dist
+prune build
+prune .pytest_cache
+prune .mypy_cache
+prune .ruff_cache
+global-exclude __pycache__
+global-exclude *.pyc
+global-exclude *.pyo
