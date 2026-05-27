@@ -13,7 +13,7 @@ Public API entrypoints:
 - cli.main — argparse CLI entrypoint
 """
 
-__version__ = "0.2.0a7"
+__version__ = "0.2.0a11"
 
 from fmm_fairness import (
     agreement,
