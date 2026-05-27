@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fmm-fairness-eval"
-version = "0.2.0a8"
+version = "0.2.0a9"
 description = "SaMD-specific fairness evaluation CLI for foundation-model medical AI; emits AI Act Art. 10 / Art. 9 evidence artifacts"
 readme = "README.md"
 license = {text = "MIT"}

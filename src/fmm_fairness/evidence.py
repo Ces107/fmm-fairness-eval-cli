@@ -56,6 +56,35 @@ REPORT_FILENAME = "fairness-report.md"
 EVIDENCE_FILENAME = "fairness-evidence.json"
 AUDIT_FILENAME = "audit.sha256"
 
+# Evidence-pack schema version. Bump on every additive change to the JSON
+# top-level shape so downstream consumers can branch on it. Independent of
+# `tool_version` (which moves on every code release, including bug fixes that
+# do not change the pack shape). Date-keyed (YYYY.MM.DD) per TD-013 fix.
+EVIDENCE_SCHEMA_VERSION = "2026.05.27"
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    """Recursively replace NaN / +Inf / -Inf with None so the pack passes
+    ``json.dumps(..., allow_nan=False)``.
+
+    Standard JSON (RFC 8259) does not accept the literals ``NaN``, ``Infinity``,
+    or ``-Infinity``. Python's default ``json.dumps`` emits them as bare
+    identifiers, which strict parsers (every browser, every conformant lib)
+    reject. We map them to ``None`` so consumers reading the pack with
+    ``json.loads`` get a clean ``null`` and can branch explicitly. (TD-024)
+    """
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    if isinstance(obj, tuple):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
+
 
 @dataclass
 class EvaluationConfig:
@@ -147,6 +176,7 @@ def build_evidence(df: pd.DataFrame, cfg: EvaluationConfig) -> dict[str, Any]:
     evidence: dict[str, Any] = {
         "tool": "fmm-fairness-eval",
         "tool_version": __version__,
+        "evidence_schema_version": EVIDENCE_SCHEMA_VERSION,
         "generated_at_utc": ts,
         "predictions_file": cfg.predictions_path,
         "n_samples": len(df),
@@ -542,7 +572,12 @@ def write_evidence_pack(
         )
         if rendered:
             evidence["rendered_plots"] = [str(Path(p).as_posix()) for p in rendered]
-    json_text = json.dumps(evidence, indent=2, sort_keys=True)
+    # Sanitize a copy only for JSON serialisation; the in-memory dict keeps
+    # NaN so the Markdown renderer (which expects floats) still works.
+    evidence_for_json = _sanitize_for_json(evidence)
+    json_text = json.dumps(
+        evidence_for_json, indent=2, sort_keys=True, allow_nan=False
+    )
     md_text = render_markdown(evidence)
 
     json_path = out / EVIDENCE_FILENAME

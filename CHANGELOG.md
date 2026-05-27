@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a9 -- 2026-05-27 (pre-PyPI hardening: TD-013 + TD-024)
+
+Two of the three remaining pre-PyPI hard items from the 2026-05-25 adversarial sweep landed.
+
+- New top-level field `evidence_schema_version` (string, date-keyed `YYYY.MM.DD`) in every pack. Bumps independently of `tool_version` so consumers can branch on the JSON shape rather than the codebase release tag. Initial value `2026.05.27`. Test asserts the field is present and matches the date pattern (TD-013).
+- The on-disk JSON pack now uses `json.dumps(..., allow_nan=False)`. NaN, +Inf and -Inf values produced by edge-case branches (BCa standard error, Hosmer-Lemeshow undefined cases, sparse-class single-class ROC AUC) are walked and mapped to `null` by a new `_sanitize_for_json` helper before serialisation. The in-memory `evidence` dict still holds the raw NaN so the Markdown renderer (which expects floats) keeps working. Test `test_evidence_pack_is_strict_json_serialisable` asserts no `NaN` / `Infinity` literal escapes (TD-024).
+
+Tests: 141 passing (140 + 1 regression). Ruff clean, mypy strict clean.
+
+Remaining pre-PyPI HIGH: TD-002 (intersectional CI / p-value). Not in this release; queued for the next slice.
+
 ## v0.2.0a8 -- 2026-05-27 (sweep-1 hardening patch)
 
 Three tech-debt items from the 2026-05-25 adversarial sweep landed as code fixes. No behaviour change in the happy path; the failure modes below now produce clear errors or correct fallbacks instead of cryptic exceptions or silent state mutation.
