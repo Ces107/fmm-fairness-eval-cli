@@ -60,9 +60,13 @@ class IntersectionalResult:
     excluded_cells: list[str] = field(default_factory=list)
     shrunk_cells: list[str] = field(default_factory=list)
     shrinkage_kappa: int = 0
+    # Optional inference layer (TD-002). Populated when the caller passes
+    # bootstrap_iters > 0; defaults to None to preserve backward-compat
+    # for callers that want only the point estimate.
+    inference: GapInferenceFields | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "intersection": self.intersection,
             "synthetic_attribute": self.synthetic_attribute,
             "metric": self.metric_name,
@@ -71,6 +75,54 @@ class IntersectionalResult:
             "excluded_cells": self.excluded_cells,
             "shrunk_cells": self.shrunk_cells,
             "shrinkage_kappa": self.shrinkage_kappa,
+        }
+        if self.inference is not None:
+            out["inference"] = self.inference.to_dict()
+        return out
+
+
+@dataclass
+class GapInferenceFields:
+    """Minimal subset of statistics.GapInference exposed in the intersectional
+    result. Keeps the IntersectionalResult schema independent of statistics.py
+    so a downstream consumer reading only intersect output does not need to
+    import statistics."""
+
+    bootstrap_method: str
+    ci_low: float
+    ci_high: float
+    bootstrap_se: float
+    bootstrap_iters: int
+    permutation_p_value: float | None
+    permutation_iters: int | None
+    minimum_detectable_effect: float | None
+    alpha: float
+    power: float
+    n_retained_cells: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bootstrap_method": self.bootstrap_method,
+            "ci_low": float(self.ci_low) if not np.isnan(self.ci_low) else None,
+            "ci_high": float(self.ci_high) if not np.isnan(self.ci_high) else None,
+            "bootstrap_se": (
+                float(self.bootstrap_se) if not np.isnan(self.bootstrap_se) else None
+            ),
+            "bootstrap_iters": int(self.bootstrap_iters),
+            "permutation_p_value": (
+                float(self.permutation_p_value)
+                if self.permutation_p_value is not None
+                else None
+            ),
+            "permutation_iters": self.permutation_iters,
+            "minimum_detectable_effect": (
+                float(self.minimum_detectable_effect)
+                if self.minimum_detectable_effect is not None
+                else None
+            ),
+            "alpha": float(self.alpha),
+            "power": float(self.power),
+            "n_retained_cells": int(self.n_retained_cells),
         }
 
 
@@ -251,8 +303,14 @@ def intersectional_f1_gap(
     metric: str = "weighted",
     shrinkage_kappa: int = SHRINKAGE_KAPPA_DEFAULT,
     shrinkage_pivot: int = SHRINKAGE_PIVOT_DEFAULT,
+    bootstrap_iters: int = 0,
+    bootstrap_method: str = "bca",
+    permutation_iters: int = 0,
+    alpha: float = 0.05,
+    power: float = 0.80,
+    seed: int = 42,
 ) -> IntersectionalResult:
-    """Cross-product F1 gap.
+    """Cross-product F1 gap with optional BCa CI and permutation p-value.
 
     ``axes`` is the list of protected-attribute column names whose cartesian
     product defines the cells. ``metric`` chooses between weighted F1 (default,
@@ -262,6 +320,15 @@ def intersectional_f1_gap(
     Bayesian shrinkage is opt-in: pass ``shrinkage_kappa > 0`` to pull
     sub-pivot cells toward the global F1. The shrunk cell names are recorded
     in the result for audit transparency.
+
+    Statistical inference is opt-in to keep the default runtime bounded
+    (TD-002): pass ``bootstrap_iters > 0`` to attach a BCa (or percentile,
+    via ``bootstrap_method``) confidence interval plus a bootstrap SE and a
+    minimum detectable effect to the result; pass ``permutation_iters > 0``
+    to attach a two-sided permutation p-value for H0 = "no gap". The
+    inference treats the retained cells (post small-cell exclusion) as the
+    population; the synthetic intersection column drives both bootstrap
+    stratification and permutation label shuffling.
     """
     K = detect_num_classes(df, num_classes)
     df_with, syn_cols = add_intersection_columns(df, [axes])
@@ -291,6 +358,21 @@ def intersectional_f1_gap(
     )
     gap = _gap_from_cells(per_cell)
     metric_name = f"intersectional_{metric}_f1_gap"
+    inference = None
+    if bootstrap_iters > 0 and len(per_cell) >= 2:
+        inference = _attach_intersectional_inference(
+            df_with,
+            syn,
+            per_cell,
+            K,
+            metric,
+            bootstrap_iters=bootstrap_iters,
+            bootstrap_method=bootstrap_method,
+            permutation_iters=permutation_iters,
+            alpha=alpha,
+            power=power,
+            seed=seed,
+        )
     return IntersectionalResult(
         intersection=list(axes),
         synthetic_attribute=syn,
@@ -300,6 +382,69 @@ def intersectional_f1_gap(
         excluded_cells=excluded,
         shrunk_cells=shrunk,
         shrinkage_kappa=shrinkage_kappa,
+        inference=inference,
+    )
+
+
+def _attach_intersectional_inference(
+    df_with: pd.DataFrame,
+    synthetic_attribute: str,
+    per_cell: list[GroupMetric],
+    num_classes: int,
+    metric: str,
+    *,
+    bootstrap_iters: int,
+    bootstrap_method: str,
+    permutation_iters: int,
+    alpha: float,
+    power: float,
+    seed: int,
+) -> GapInferenceFields:
+    """Run gap_inference on the retained-cells subset and project the result
+    into the intersectional schema.
+
+    Restricting to retained cells keeps the bootstrap and permutation
+    coherent with the small-cell exclusion convention used elsewhere in
+    the package: tiny cells do not appear as bootstrap strata, and the
+    permutation null distribution shuffles labels only across the cells
+    that actually contributed to the observed gap.
+    """
+    from fmm_fairness.statistics import gap_inference
+
+    retained_names = [c.group for c in per_cell]
+    df_sub = df_with[df_with[synthetic_attribute].isin(retained_names)].copy()
+    f1_fn = _weighted_f1 if metric == "weighted" else _macro_f1
+
+    def _per_cell_metric(sub: pd.DataFrame) -> float:
+        return f1_fn(
+            sub["y_true"].to_numpy(),
+            sub["y_pred"].to_numpy(),
+            num_classes,
+        )
+
+    inf = gap_inference(
+        df_sub,
+        synthetic_attribute,
+        _per_cell_metric,
+        bootstrap_method=bootstrap_method,
+        n_bootstrap_iters=bootstrap_iters,
+        n_permutation_iters=permutation_iters,
+        alpha=alpha,
+        power=power,
+        seed=seed,
+    )
+    return GapInferenceFields(
+        bootstrap_method=inf.bootstrap_method,
+        ci_low=inf.ci_low,
+        ci_high=inf.ci_high,
+        bootstrap_se=inf.bootstrap_se,
+        bootstrap_iters=bootstrap_iters,
+        permutation_p_value=inf.permutation_p_value,
+        permutation_iters=inf.permutation_iters,
+        minimum_detectable_effect=inf.minimum_detectable_effect,
+        alpha=inf.alpha,
+        power=inf.power,
+        n_retained_cells=len(per_cell),
     )
 
 
@@ -325,8 +470,20 @@ def build_intersectional_breakdown(
     min_group_n: int = MIN_GROUP_N_DEFAULT,
     shrinkage_kappa: int = SHRINKAGE_KAPPA_DEFAULT,
     shrinkage_pivot: int = SHRINKAGE_PIVOT_DEFAULT,
+    bootstrap_iters: int = 0,
+    bootstrap_method: str = "bca",
+    permutation_iters: int = 0,
+    alpha: float = 0.05,
+    power: float = 0.80,
+    seed: int = 42,
 ) -> dict[str, Any]:
-    """Top-level orchestrator. Returns the evidence-pack ``intersectional_breakdown`` dict."""
+    """Top-level orchestrator. Returns the evidence-pack ``intersectional_breakdown`` dict.
+
+    Pass ``bootstrap_iters > 0`` to attach BCa CI + bootstrap SE + MDE to
+    each intersectional metric. Pass ``permutation_iters > 0`` to attach a
+    two-sided permutation p-value. Both default off; the prior point-only
+    output shape is preserved when inference is not requested.
+    """
     K = detect_num_classes(df, num_classes)
     if not intersections:
         return {
@@ -346,6 +503,12 @@ def build_intersectional_breakdown(
             metric="weighted",
             shrinkage_kappa=shrinkage_kappa,
             shrinkage_pivot=shrinkage_pivot,
+            bootstrap_iters=bootstrap_iters,
+            bootstrap_method=bootstrap_method,
+            permutation_iters=permutation_iters,
+            alpha=alpha,
+            power=power,
+            seed=seed,
         )
         macro = intersectional_f1_gap(
             df,
@@ -355,6 +518,12 @@ def build_intersectional_breakdown(
             metric="macro",
             shrinkage_kappa=shrinkage_kappa,
             shrinkage_pivot=shrinkage_pivot,
+            bootstrap_iters=bootstrap_iters,
+            bootstrap_method=bootstrap_method,
+            permutation_iters=permutation_iters,
+            alpha=alpha,
+            power=power,
+            seed=seed,
         )
         results.append(
             {
@@ -369,5 +538,7 @@ def build_intersectional_breakdown(
         "min_group_n": min_group_n,
         "shrinkage_kappa": shrinkage_kappa,
         "shrinkage_pivot": shrinkage_pivot,
+        "bootstrap_iters": bootstrap_iters,
+        "permutation_iters": permutation_iters,
         "results": results,
     }

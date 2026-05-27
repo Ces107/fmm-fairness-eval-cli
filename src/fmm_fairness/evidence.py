@@ -109,6 +109,8 @@ class EvaluationConfig:
     min_group_n: int = MIN_GROUP_N_DEFAULT
     shrinkage_kappa: int = 0
     shrinkage_pivot: int = 50
+    intersect_bootstrap_iters: int = 0      # 0 disables BCa CI on intersect gap
+    intersect_permutation_iters: int = 0    # 0 disables permutation p-value
     render_plots: bool = False
     model_card_path: str | None = None  # path to a YAML/JSON Art. 13 model card
 
@@ -206,6 +208,11 @@ def build_evidence(df: pd.DataFrame, cfg: EvaluationConfig) -> dict[str, Any]:
             min_group_n=cfg.min_group_n,
             shrinkage_kappa=cfg.shrinkage_kappa,
             shrinkage_pivot=cfg.shrinkage_pivot,
+            bootstrap_iters=cfg.intersect_bootstrap_iters,
+            bootstrap_method=cfg.bootstrap_method,
+            permutation_iters=cfg.intersect_permutation_iters,
+            alpha=cfg.alpha,
+            power=cfg.power,
         )
     evidence["calibration"] = build_calibration_block(
         df,

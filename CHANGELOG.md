@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented here.
 
+## v0.2.0a11 -- 2026-05-27 (intersectional inference: TD-002 closed)
+
+The last HIGH-severity tech-debt item before PyPI publish is closed: the intersectional gap statistic now carries opt-in BCa confidence intervals, bootstrap standard errors, two-sided permutation p-values, and minimum-detectable-effect numbers, parity with the single-axis weighted F1 gap (TD-002).
+
+New API:
+- `IntersectionalResult.inference` is a `GapInferenceFields | None`. Populated when the caller passes `bootstrap_iters > 0`; otherwise None (backward-compat preserved).
+- `intersectional_f1_gap(..., bootstrap_iters=1000, bootstrap_method='bca', permutation_iters=1000, alpha=0.05, power=0.80, seed=42)`. Bootstrap and permutation default off so the point-estimate-only runtime is unchanged.
+- `build_intersectional_breakdown(..., bootstrap_iters, permutation_iters, ...)` forwards the same kwargs to every metric in the breakdown.
+- CLI flags `--intersect-bootstrap-iters N` and `--intersect-permutation-iters N` for the `evaluate` subcommand.
+
+The inference treats the retained cells (post small-cell exclusion) as the population: bootstrap is stratified by synthetic intersection cell, and permutation shuffles labels only across cells that actually contributed to the observed gap. This keeps the result coherent with the small-cell convention used elsewhere in the package.
+
+Tests: 4 new in `TestIntersectionalInference`, full suite still passes. Ruff clean, mypy strict clean.
+
+Pre-PyPI HIGH list is now empty. The remaining tech-debt is MEDIUM-or-below edge cases.
+
 ## v0.2.0a10 -- 2026-05-27 (edge-case correctness: TD-001 + TD-004)
 
 Two HIGH severity edge-case bugs from the 2026-05-25 sweep landed.

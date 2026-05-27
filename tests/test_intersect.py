@@ -182,3 +182,105 @@ class TestIntersectionalToFairnessResult:
         assert fr.metric_name == ir.metric_name
         assert fr.gap == ir.gap
         assert len(fr.per_group) == len(ir.per_cell)
+
+
+class TestIntersectionalInference:
+    """TD-002: BCa CI + permutation p-value + MDE on the intersectional gap."""
+
+    def test_inference_disabled_by_default(self) -> None:
+        df = _make_df(disparity=True)
+        result = intersectional_f1_gap(df, ["site", "sex"], num_classes=3)
+        assert result.inference is None
+        assert "inference" not in result.to_dict()
+
+    def test_inference_attached_when_bootstrap_iters_gt_zero(self) -> None:
+        df = _make_df(disparity=True, n=300)
+        result = intersectional_f1_gap(
+            df,
+            ["site", "sex"],
+            num_classes=3,
+            bootstrap_iters=200,
+            permutation_iters=200,
+            seed=7,
+        )
+        assert result.inference is not None
+        inf = result.inference
+        assert inf.bootstrap_method in {"bca", "percentile"}
+        assert inf.bootstrap_iters == 200
+        assert inf.permutation_iters == 200
+        assert inf.n_retained_cells >= 2
+        assert 0.0 <= inf.permutation_p_value <= 1.0  # type: ignore[operator]
+        # MDE can be NaN in the degenerate case where bootstrap SE is 0
+        # (e.g. a planted disparity producing identical bootstrap replicates).
+        # In the non-degenerate case it must be a positive float.
+        if inf.bootstrap_se is not None and inf.bootstrap_se > 0.0:
+            assert inf.minimum_detectable_effect is not None
+            assert inf.minimum_detectable_effect > 0.0
+        as_dict = result.to_dict()["inference"]
+        for key in (
+            "bootstrap_method",
+            "ci_low",
+            "ci_high",
+            "bootstrap_se",
+            "permutation_p_value",
+            "minimum_detectable_effect",
+            "n_retained_cells",
+        ):
+            assert key in as_dict
+
+    def test_inference_detects_real_disparity(self) -> None:
+        """With a planted A*F disparity, the permutation p should drop sharply.
+
+        With disparity=True the per-cell F1 is depressed only for A*F (one
+        of four cells), so the gap is structural, not noise. The two-sided
+        permutation p-value on label shuffles should land far below the
+        no-disparity baseline.
+        """
+        df_dis = _make_df(disparity=True, n=400, seed=11)
+        df_null = _make_df(disparity=False, n=400, seed=11)
+        r_dis = intersectional_f1_gap(
+            df_dis,
+            ["site", "sex"],
+            num_classes=3,
+            bootstrap_iters=200,
+            permutation_iters=500,
+            seed=11,
+        )
+        r_null = intersectional_f1_gap(
+            df_null,
+            ["site", "sex"],
+            num_classes=3,
+            bootstrap_iters=200,
+            permutation_iters=500,
+            seed=11,
+        )
+        assert r_dis.inference is not None
+        assert r_null.inference is not None
+        # Planted gap should look more extreme on the permutation distribution
+        # than the no-disparity baseline. We assert the inequality rather than
+        # an absolute threshold so the test is robust to minor seed shifts.
+        assert (
+            r_dis.inference.permutation_p_value  # type: ignore[operator]
+            < r_null.inference.permutation_p_value  # type: ignore[operator]
+        )
+        # And the gap itself should be larger under planted disparity.
+        assert r_dis.gap > r_null.gap
+
+    def test_inference_propagates_through_build_intersectional_breakdown(self) -> None:
+        df = _make_df(disparity=True, n=300)
+        block = build_intersectional_breakdown(
+            df,
+            [["site", "sex"]],
+            num_classes=3,
+            bootstrap_iters=200,
+            permutation_iters=0,
+            seed=7,
+        )
+        assert block["bootstrap_iters"] == 200
+        assert block["permutation_iters"] == 0
+        weighted_inf = block["results"][0]["weighted_f1_gap"].get("inference")
+        macro_inf = block["results"][0]["macro_f1_gap"].get("inference")
+        assert weighted_inf is not None
+        assert macro_inf is not None
+        assert weighted_inf["bootstrap_method"] in {"bca", "percentile"}
+        assert weighted_inf["permutation_p_value"] is None  # we passed 0

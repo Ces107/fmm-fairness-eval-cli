@@ -182,6 +182,28 @@ def _add_evaluate(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "calibration data is always written to the JSON evidence pack."
         ),
     )
+    ev.add_argument(
+        "--intersect-bootstrap-iters",
+        type=int,
+        default=0,
+        help=(
+            "Number of BCa bootstrap iterations for the intersectional gap "
+            "(default: 0 = no inference, point estimate only). Set 500-1000 "
+            "to attach CI + bootstrap SE + minimum detectable effect to each "
+            "intersectional metric in the evidence pack."
+        ),
+    )
+    ev.add_argument(
+        "--intersect-permutation-iters",
+        type=int,
+        default=0,
+        help=(
+            "Number of label-shuffle permutation iterations for the "
+            "intersectional gap (default: 0 = no permutation test). Set "
+            "500-2000 to attach a two-sided permutation p-value for "
+            "H0 = 'no intersectional gap' to each metric."
+        ),
+    )
 
 
 def _add_compare(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -356,6 +378,8 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         min_group_n=args.min_group_n,
         shrinkage_kappa=args.shrinkage_kappa,
         shrinkage_pivot=args.shrinkage_pivot,
+        intersect_bootstrap_iters=args.intersect_bootstrap_iters,
+        intersect_permutation_iters=args.intersect_permutation_iters,
         render_plots=args.render_plots,
         model_card_path=args.model_card,
     )
