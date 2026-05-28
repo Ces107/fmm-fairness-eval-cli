@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from math import sqrt
+from math import isnan, sqrt
 from typing import Any
 
 import numpy as np
@@ -201,7 +201,14 @@ def _coerce_bracket(
     typically not distinguishable from zero, which the permutation p-value
     will reflect). This keeps reported intervals coherent without hiding the
     near-zero, high-bias regime.
+
+    NaN ``theta_hat`` (e.g. from a degenerate group where ``per_group_fn``
+    returned NaN under empty positive class) is passed through unchanged so
+    the caller's CI bounds do not silently become NaN. ``min``/``max`` on
+    NaN is order-dependent and would otherwise contaminate the bounds.
     """
+    if isnan(theta_hat):
+        return ci_low, ci_high
     return min(ci_low, theta_hat), max(ci_high, theta_hat)
 
 

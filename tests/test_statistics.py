@@ -114,6 +114,15 @@ class TestPercentileVsBca(unittest.TestCase):
         # already coherent -> unchanged
         self.assertEqual(_coerce_bracket(0.3, 0.2, 0.4), (0.2, 0.4))
 
+    def test_coerce_bracket_passes_through_nan_theta_hat(self) -> None:
+        # TD-047: NaN theta_hat (e.g. degenerate group) must NOT contaminate
+        # the returned bounds via min/max NaN order-dependence.
+        from fmm_fairness.statistics import _coerce_bracket
+
+        lo, hi = _coerce_bracket(float("nan"), 0.1, 0.5)
+        self.assertEqual((lo, hi), (0.1, 0.5))
+        self.assertFalse(any(x != x for x in (lo, hi)))  # neither is NaN
+
 
 class TestPermutationTest(unittest.TestCase):
     def test_no_gap_returns_large_p(self) -> None:
